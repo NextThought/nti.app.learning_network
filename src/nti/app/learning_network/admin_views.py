@@ -33,6 +33,7 @@ from nti.ntiids.ntiids import find_object_with_ntiid
 
 from nti.learning_network.interfaces import IAccessStatsSource
 from nti.learning_network.interfaces import IProductionStatsSource
+from nti.learning_network.interfaces import IInteractionStatsSource
 
 STATS_VIEW_NAME = "LearningNetworkStats"
 
@@ -42,14 +43,16 @@ def _get_stat_source( iface, user, course, timestamp ):
 	elif course:
 		stats_source = component.queryMultiAdapter( ( user, course ), iface )
 	else:
-		stats_source = iface( user )
+		stats_source = iface( user, None )
 	return stats_source
 
 def _add_stats_to_user_dict( user_dict, user, course, timestamp ):
 	access_source = _get_stat_source( IAccessStatsSource, user, course, timestamp )
 	prod_source = _get_stat_source( IProductionStatsSource, user, course, timestamp )
+	social_source = _get_stat_source( IInteractionStatsSource, user, course, timestamp )
 	user_dict['Access'] = access_source
 	user_dict['Production'] = prod_source
+	user_dict['Interaction'] = social_source
 
 @view_config(	route_name='objects.generic.traversal',
 				renderer='rest',
