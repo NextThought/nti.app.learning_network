@@ -71,7 +71,7 @@ class LearningNetworkCourseStats( AbstractAuthenticatedView ):
 		result = LocatedExternalDict()
 		course = self.context
 		params = CaseInsensitiveDict( self.request.params )
-		username = params.get( 'User' )
+		username = params.get( 'Username' )
 		timestamp = params.get( 'Timestamp' )
 		timestamp = datetime.utcfromtimestamp( timestamp ) if timestamp else None
 
