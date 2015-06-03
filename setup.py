@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 VERSION = '0.0.0'
 
 entry_points = {
-    "z3c.autoinclude.plugin": [
+	"z3c.autoinclude.plugin": [
 		'target = nti.app',
 	],
 	'console_scripts': [
@@ -29,9 +29,10 @@ setup(
 	],
 	packages=find_packages('src'),
 	package_dir={'': 'src'},
-	namespace_packages=['nti','nti.app'],
+	namespace_packages=['nti', 'nti.app'],
 	install_requires=[
 		'collective.monkeypatcher',
+		'pygraphviz',
 		'setuptools',
 		'nti.learning_network'
 	],
