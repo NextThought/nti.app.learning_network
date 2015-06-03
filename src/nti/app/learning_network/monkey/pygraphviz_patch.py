@@ -22,6 +22,11 @@ to read from the pipes; the threads are cooperative, but the pipes aren't, so th
 """
 
 def patch( scope, original, replacement ):
+
+	if not hasattr( gevent, 'monkey' ):
+		# Probably only in unit tests.
+		return
+
 	class FakeSubprocess(object):
 		pass
 
