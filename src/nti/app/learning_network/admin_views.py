@@ -150,4 +150,4 @@ class CourseConnectionGraph( AbstractAuthenticatedView ):
 		timestamp = datetime.utcfromtimestamp( timestamp ) if timestamp else None
 		get_connection_graphs( course, timestamp )
 		# TODO What do we want to return, gif?
-		return hexc.HTTPNoContent
+		return hexc.HTTPNoContent()

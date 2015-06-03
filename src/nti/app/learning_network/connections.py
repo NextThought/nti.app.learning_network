@@ -15,7 +15,11 @@ from pygraphviz import AGraph
 
 from calendar import timegm as _calendar_timegm
 
+from nti.externalization.oids import to_external_ntiid_oid
+
 from nti.learning_network.interfaces import IConnectionsSource
+
+from nti.site.site import getSite
 
 def _get_boundary( timestamp ):
 	beginning = timestamp.replace( hour=0, minute=0, second=0, microsecond=0 )
@@ -23,7 +27,7 @@ def _get_boundary( timestamp ):
 
 def _do_accum( graph_dict ):
 	"""
-	Accumulate all previous connections into current.
+	Accumulate all previous connections into current bucket.
 	Our last bucket should contain all edges.
 	"""
 	accum = {}
@@ -45,30 +49,58 @@ def _build_timestamp_nodes_edges_dict( connections ):
 	_do_accum( results )
 	return results
 
-def _do_store( timestamp, graph ):
-	env_dir = os.getenv('DATASERVER_DIR' )
-	path = os.path.join( env_dir, 'data/learning_network' )
-	if not os.path.exists( path ):
-		os.mkdir( path )
-	path = os.path.join( path, 'connections' )
-	if not os.path.exists( path ):
-		os.mkdir( path )
-	# FIXME Should create a site/context directory
-	timestamp = _calendar_timegm( timestamp.timetuple() )
-	filepath = os.path.join( path, '%s.png' % timestamp )
-	graph.draw( filepath, prog='neato' )
+def _initialize_dirs( context ):
+	"""
+	Initialize our dirs, returning the full path.
+	"""
+	site = getSite()
+	site_name = site.__name__
+	context_name = to_external_ntiid_oid( context )
+	ext_path = 'data/learning_network/connections/%s/%s' % ( site_name, context_name )
 
-def _get_graphs( connections ):
+	path = os.getenv('DATASERVER_DIR' )
+	for path_part in ext_path.split( '/' ):
+		path = os.path.join( path, path_part )
+		if not os.path.exists( path ):
+			os.mkdir( path )
+	return path
+
+def _do_store( timestamp, graph, course ):
+	# Store our graph persistently
+	path = _initialize_dirs( course )
+	timestamp = _calendar_timegm( timestamp.timetuple() )
+	file_path = os.path.join( path, '%s.png' % timestamp )
+	# Once a file exists, we assume it will never be updated.
+	if not os.path.exists( file_path ):
+		graph.draw( file_path, prog='neato' )
+
+def _format_graph( graph ):
+	graph.edge_attr['color']='#494949'
+
+	graph.node_attr['shape'] = 'circle'
+	graph.node_attr['fixedsize'] = 'true'
+	graph.node_attr['label'] = ' ' # space is important
+	graph.node_attr['fontcolor'] = '#494949'
+	graph.node_attr['fontsize'] = '10'
+	graph.node_attr['width'] = '.4'
+	graph.node_attr['height'] = '.4'
+
+	graph.graph_attr['label'] = 'Connections'
+	graph.graph_attr['fontcolor'] = '#494949'
+	graph.graph_attr['fontsize'] = '10'
+
+def _get_graphs( connections, course ):
 	graphs = []
 	timestamp_dict = _build_timestamp_nodes_edges_dict( connections )
 	for timestamp, nodes_edges in timestamp_dict.items():
 		graph = AGraph( nodes_edges )
-		_do_store( timestamp, graph )
+		_format_graph( graph )
+		_do_store( timestamp, graph, course )
 		graphs.append( graph )
 	return graphs
 
 def get_connection_graphs( course, timestamp=None ):
 	connection_source = IConnectionsSource( course )
 	connections = connection_source.get_connections( timestamp )
-	graphs = _get_graphs( connections )
+	graphs = _get_graphs( connections, course )
 	return graphs
