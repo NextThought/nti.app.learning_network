@@ -15,7 +15,7 @@ from pygraphviz import AGraph
 
 from calendar import timegm as _calendar_timegm
 
-from nti.externalization.oids import to_external_ntiid_oid
+from nti.contenttypes.courses.interfaces import ICourseCatalogEntry
 
 from nti.learning_network.interfaces import IConnectionsSource
 
@@ -55,7 +55,8 @@ def _initialize_dirs( context ):
 	"""
 	site = getSite()
 	site_name = site.__name__
-	context_name = to_external_ntiid_oid( context )
+	context = ICourseCatalogEntry( context )
+	context_name = context.ntiid
 	ext_path = 'data/learning_network/connections/%s/%s' % ( site_name, context_name )
 
 	path = os.getenv('DATASERVER_DIR' )
@@ -72,6 +73,7 @@ def _do_store( timestamp, graph, course ):
 	file_path = os.path.join( path, '%s.png' % timestamp )
 	# Once a file exists, we assume it will never be updated.
 	if not os.path.exists( file_path ):
+		graph.layout()
 		graph.draw( file_path, prog='neato' )
 
 def _format_graph( graph ):
@@ -82,12 +84,14 @@ def _format_graph( graph ):
 	graph.node_attr['label'] = ' ' # space is important
 	graph.node_attr['fontcolor'] = '#494949'
 	graph.node_attr['fontsize'] = '10'
-	graph.node_attr['width'] = '.4'
-	graph.node_attr['height'] = '.4'
+	graph.node_attr['width'] = '.2'
+	graph.node_attr['height'] = '.2'
+	graph.node_attr['fillcolor'] = '#757474'
 
 	graph.graph_attr['label'] = 'Connections'
 	graph.graph_attr['fontcolor'] = '#494949'
 	graph.graph_attr['fontsize'] = '10'
+	graph.graph_attr['size' ] = '7.75,10.25'
 
 def _get_graphs( connections, course ):
 	graphs = []
