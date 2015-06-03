@@ -35,7 +35,10 @@ from nti.learning_network.interfaces import IAccessStatsSource
 from nti.learning_network.interfaces import IProductionStatsSource
 from nti.learning_network.interfaces import IInteractionStatsSource
 
+from .connections import get_connection_graphs
+
 STATS_VIEW_NAME = "LearningNetworkStats"
+CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"
 
 def _get_stat_source( iface, user, course, timestamp ):
 	if course and timestamp:
@@ -127,3 +130,24 @@ class LearningNetworkUserStats( AbstractAuthenticatedView ):
 		result = LocatedExternalDict()
 		_add_stats_to_user_dict( result, user, course, timestamp )
 		return result
+
+@view_config(	route_name='objects.generic.traversal',
+				renderer='rest',
+				request_method='GET',
+				context=ICourseInstance,
+				permission=nauth.ACT_NTI_ADMIN,
+				name=CONNECTIONS_VIEW_NAME )
+class CourseConnectionGraph( AbstractAuthenticatedView ):
+	"""
+	For the given course (and possibly timestamp), return
+	the connections (in graph or gif form?).
+	"""
+
+	def __call__(self):
+		course = self.context
+		params = CaseInsensitiveDict( self.request.params )
+		timestamp = params.get( 'Timestamp' )
+		timestamp = datetime.utcfromtimestamp( timestamp ) if timestamp else None
+		get_connection_graphs( course, timestamp )
+		# TODO What do we want to return, gif?
+		return hexc.HTTPNoContent

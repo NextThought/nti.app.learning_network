@@ -31,6 +31,7 @@ setup(
 	package_dir={'': 'src'},
 	namespace_packages=['nti','nti.app'],
 	install_requires=[
+		'collective.monkeypatcher',
 		'setuptools',
 		'nti.learning_network'
 	],
