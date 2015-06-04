@@ -3,7 +3,7 @@ import gevent
 """
 JAM - 06.02.2015
 pygraphviz-1.2 (python2.7)
-Note: This is probably unnecessary under python3.
+Note: This should be unnecessary under python3.
 
 `pygraphviz` needs file descriptor numbers to pass to the underlying `graphviz`
 library. There is a standard method to get them, `fileno()`, but, under
@@ -75,3 +75,9 @@ def patch( scope, original, replacement ):
 		self._Thread__started = Event()
 		self._Thread__block = _Condition(Lock())
 	pygraphviz.agraph.PipeReader.__init__ = __init__
+
+	# Since we're using real threads, we should use real locks
+	# (instead of gevent locks) to avoid intermittent 'block forever'
+	# issues.
+	if isinstance( threading._active_limbo_lock, gevent.lock.Semaphore ):
+		threading._active_limbo_lock = gevent.monkey.get_original('threading', '_allocate_lock')()
