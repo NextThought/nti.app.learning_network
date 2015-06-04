@@ -13,7 +13,7 @@ import os
 
 try:
 	from pygraphviz import AGraph
-except ImportError:
+except ImportError: # PyPy? 
 	AGraph = None
 
 from calendar import timegm as _calendar_timegm
