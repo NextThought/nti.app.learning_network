@@ -9,17 +9,20 @@
 	<include package="zope.component" />
 	<include package="zope.security" />
 
-	<include package="collective.monkeypatcher" />
-
+	
 	<include package="nti.learning_network" />
 
-	<!-- Doing late patching of pygraphviz, we only need the handler param. -->
-	<monkey:patch
-		module="pygraphviz"
-		original=""
-		ignoreOriginal="True"
-		replacement=".monkey.pygraphviz_patch"
-		handler=".monkey.pygraphviz_patch.patch" />
+	<configure zcml:condition="installed pygraphviz">
+		<include package="collective.monkeypatcher" />
+	
+		<!-- Doing late patching of pygraphviz, we only need the handler param. -->
+		<monkey:patch
+			module="pygraphviz"
+			original=""
+			ignoreOriginal="True"
+			replacement=".monkey.pygraphviz_patch"
+			handler=".monkey.pygraphviz_patch.patch" />
 
+	</configure>
 
 </configure>
