@@ -11,7 +11,10 @@ logger = __import__('logging').getLogger(__name__)
 
 import os
 
-from pygraphviz import AGraph
+try:
+	from pygraphviz import AGraph
+except ImportError:
+	AGraph = None
 
 from calendar import timegm as _calendar_timegm
 
@@ -94,6 +97,9 @@ def _format_graph( graph ):
 	graph.graph_attr['size' ] = '7.75,10.25'
 
 def _get_graphs( connections, course ):
+	if AGraph is None:
+		raise TypeError("pygraphviz is not avaiable")
+
 	graphs = []
 	timestamp_dict = _build_timestamp_nodes_edges_dict( connections )
 	for timestamp, nodes_edges in timestamp_dict.items():
