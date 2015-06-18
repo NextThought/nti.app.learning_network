@@ -23,17 +23,17 @@ from nti.common.maps import CaseInsensitiveDict
 from nti.contenttypes.courses.interfaces import ICourseInstance
 from nti.contenttypes.courses.interfaces import ICourseEnrollments
 
-from nti.dataserver import authorization as nauth
 from nti.dataserver.interfaces import IUser
 from nti.dataserver.users.users import User
+from nti.dataserver import authorization as nauth
 
 from nti.externalization.interfaces import LocatedExternalDict
-
-from nti.ntiids.ntiids import find_object_with_ntiid
 
 from nti.learning_network.interfaces import IAccessStatsSource
 from nti.learning_network.interfaces import IProductionStatsSource
 from nti.learning_network.interfaces import IInteractionStatsSource
+
+from nti.ntiids.ntiids import find_object_with_ntiid
 
 from .connections import get_connection_graphs
 
@@ -58,11 +58,11 @@ def _add_stats_to_user_dict(user_dict, user, course, timestamp):
 	user_dict['Interaction'] = social_source
 
 @view_config(route_name='objects.generic.traversal',
-				renderer='rest',
-				request_method='GET',
-				context=ICourseInstance,
-				permission=nauth.ACT_NTI_ADMIN,
-				name=STATS_VIEW_NAME)
+			 renderer='rest',
+			 request_method='GET',
+			 context=ICourseInstance,
+			 permission=nauth.ACT_NTI_ADMIN,
+			 name=STATS_VIEW_NAME)
 class LearningNetworkCourseStats(AbstractAuthenticatedView):
 	"""
 	For the given course (and possibly user or timestamp), return
@@ -102,11 +102,11 @@ class LearningNetworkCourseStats(AbstractAuthenticatedView):
 		return result
 
 @view_config(route_name='objects.generic.traversal',
-				renderer='rest',
-				request_method='GET',
-				context=IUser,
-				permission=nauth.ACT_NTI_ADMIN,
-				name=STATS_VIEW_NAME)
+			 renderer='rest',
+			 request_method='GET',
+			 context=IUser,
+			 permission=nauth.ACT_NTI_ADMIN,
+			 name=STATS_VIEW_NAME)
 class LearningNetworkUserStats(AbstractAuthenticatedView):
 	"""
 	For the given user (and possibly course or timestamp), return
@@ -132,11 +132,11 @@ class LearningNetworkUserStats(AbstractAuthenticatedView):
 		return result
 
 @view_config(route_name='objects.generic.traversal',
-				renderer='rest',
-				request_method='GET',
-				context=ICourseInstance,
-				permission=nauth.ACT_NTI_ADMIN,
-				name=CONNECTIONS_VIEW_NAME)
+			 renderer='rest',
+			 request_method='GET',
+			 context=ICourseInstance,
+			 permission=nauth.ACT_NTI_ADMIN,
+			 name=CONNECTIONS_VIEW_NAME)
 class CourseConnectionGraph(AbstractAuthenticatedView):
 	"""
 	For the given course (and possibly timestamp), return
