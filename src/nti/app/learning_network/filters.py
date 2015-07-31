@@ -24,6 +24,6 @@ class _LearningNetworkContentObjectFilter(object):
 
 	def filter_creatable_objects(self, terms):
 		for name in list(terms):  # mutating
-			if name.startswith(self.PREFIX) or name.startswith(self.PREFIX_2):
+			if name.startswith(self.PREFIX_1) or name.startswith(self.PREFIX_2):
 				terms.pop(name, None)
 		return terms
