@@ -9,14 +9,19 @@
 	<include package="zope.component" />
 	<include package="zope.security" />
 
-	
 	<include package="nti.learning_network" />
 
+	<!-- Filters -->
+	<subscriber	factory=".filters._LearningNetworkContentObjectFilter"
+				provides="nti.appserver.interfaces.ICreatableObjectFilter"
+				for="nti.dataserver.interfaces.IUser" />
+				
 	<configure zcml:condition="installed pygraphviz">
+
 		<include package="collective.monkeypatcher" />
 	
 		<!-- Doing late patching of pygraphviz, we only need the handler param. -->
-		<monkey:patch
+		<monkey:patch	
 			module="pygraphviz"
 			original=""
 			ignoreOriginal="True"

@@ -10,13 +10,12 @@ __docformat__ = "restructuredtext en"
 logger = __import__('logging').getLogger(__name__)
 
 import os
+from calendar import timegm as _calendar_timegm
 
 try:
 	from pygraphviz import AGraph
 except ImportError: # PyPy? 
 	AGraph = None
-
-from calendar import timegm as _calendar_timegm
 
 from nti.contenttypes.courses.interfaces import ICourseCatalogEntry
 
