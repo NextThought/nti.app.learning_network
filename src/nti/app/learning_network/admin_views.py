@@ -14,6 +14,7 @@ import csv
 from io import BytesIO
 
 from datetime import datetime
+from datetime import timedelta
 
 from zope import component
 
@@ -46,8 +47,10 @@ from .connections import get_connection_graphs
 STATS_VIEW_NAME = "LearningNetworkStats"
 CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"
 
-def _get_stat_source(iface, user, course, timestamp):
-	if course and timestamp:
+def _get_stat_source(iface, user, course, timestamp, max_timestamp):
+	if course and timestamp and max_timestamp:
+		stats_source = component.queryMultiAdapter((user, course, timestamp, max_timestamp), iface)
+	elif course and timestamp:
 		stats_source = component.queryMultiAdapter((user, course, timestamp), iface)
 	elif course:
 		stats_source = component.queryMultiAdapter((user, course), iface)
@@ -55,10 +58,10 @@ def _get_stat_source(iface, user, course, timestamp):
 		stats_source = iface(user, None)
 	return stats_source
 
-def _get_stats_for_user( user, course, timestamp=None ):
-	access_source = _get_stat_source(IAccessStatsSource, user, course, timestamp)
-	prod_source = _get_stat_source(IProductionStatsSource, user, course, timestamp)
-	social_source = _get_stat_source(IInteractionStatsSource, user, course, timestamp)
+def _get_stats_for_user( user, course, timestamp=None, max_timestamp=None ):
+	access_source = _get_stat_source(IAccessStatsSource, user, course, timestamp, max_timestamp)
+	prod_source = _get_stat_source(IProductionStatsSource, user, course, timestamp, max_timestamp)
+	social_source = _get_stat_source(IInteractionStatsSource, user, course, timestamp, max_timestamp)
 	return access_source, prod_source, social_source
 
 def _add_stats_to_user_dict(user_dict, user, course, timestamp):
@@ -121,8 +124,8 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 			writer.writerow( header_labels )
 		return self.type_stat_statvar_map
 
-	def _write_stats_for_user( self, writer, user, course ):
-		sources = _get_stats_for_user( user, course )
+	def _write_stats_for_user( self, writer, user, course, start_time, end_time ):
+		sources = _get_stats_for_user( user, course, start_time, end_time )
 		type_stat_statvar_map = self._get_headers( writer, *sources )
 		user_results = []
 		for source in sources:
@@ -139,6 +142,8 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 		course = self.context
 		params = CaseInsensitiveDict(self.request.params)
 		course_filter = params.get( 'filter', '' )
+		day_delta = params.get( 'CourseStartDayDelta' )
+		day_delta = timedelta( days=int( day_delta ) ) if day_delta else None
 
 		response = self.request.response
 		response.content_encoding = str( 'identity' )
@@ -156,11 +161,16 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 				continue
 			usernames = tuple(ICourseEnrollments(course).iter_principals())
 
+			start_time = end_time = None
+			if day_delta is not None:
+				start_time = entry.StartDate
+				end_time = start_time + day_delta
+
 			for username in usernames:
 				user = User.get_user(username)
 				if 		user is not None \
 					and not username.endswith( '@nextthought.com' ):
-					self._write_stats_for_user( writer, user, course )
+					self._write_stats_for_user( writer, user, course, start_time, end_time )
 
 		stream.flush()
 		stream.seek(0)
