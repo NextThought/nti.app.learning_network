@@ -37,6 +37,7 @@ from nti.externalization.interfaces import LocatedExternalDict
 
 from nti.learning_network.interfaces import IStats
 from nti.learning_network.interfaces import IAccessStatsSource
+from nti.learning_network.interfaces import IOutcomeStatsSource
 from nti.learning_network.interfaces import IProductionStatsSource
 from nti.learning_network.interfaces import IInteractionStatsSource
 
@@ -47,7 +48,7 @@ from .connections import get_connection_graphs
 STATS_VIEW_NAME = "LearningNetworkStats"
 CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"
 
-def _get_stat_source(iface, user, course, timestamp, max_timestamp):
+def _get_stat_source(iface, user, course, timestamp=None, max_timestamp=None):
 	if course and timestamp and max_timestamp:
 		stats_source = component.queryMultiAdapter((user, course, timestamp, max_timestamp), iface)
 	elif course and timestamp:
@@ -62,13 +63,15 @@ def _get_stats_for_user( user, course, timestamp=None, max_timestamp=None ):
 	access_source = _get_stat_source(IAccessStatsSource, user, course, timestamp, max_timestamp)
 	prod_source = _get_stat_source(IProductionStatsSource, user, course, timestamp, max_timestamp)
 	social_source = _get_stat_source(IInteractionStatsSource, user, course, timestamp, max_timestamp)
-	return access_source, prod_source, social_source
+	outcome_source = _get_stat_source(IOutcomeStatsSource, user, course)
+	return access_source, prod_source, social_source, outcome_source
 
 def _add_stats_to_user_dict(user_dict, user, course, timestamp):
-	access_source, prod_source, social_source = _get_stats_for_user( user, course, timestamp )
+	access_source, prod_source, social_source, outcome_source = _get_stats_for_user( user, course, timestamp )
 	user_dict['Access'] = access_source
 	user_dict['Production'] = prod_source
 	user_dict['Interaction'] = social_source
+	user_dict['Outcomes'] = outcome_source
 
 @view_config(route_name='objects.generic.traversal',
 			 renderer='rest',
@@ -87,6 +90,8 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 			return 'Production'
 		if IInteractionStatsSource.providedBy( source ):
 			return 'Interaction'
+		if IOutcomeStatsSource.providedBy( source ):
+			return 'Outcome'
 
 	def _get_headers( self, writer, *sources ):
 		"""
@@ -148,23 +153,27 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 		response = self.request.response
 		response.content_encoding = str( 'identity' )
 		response.content_type = str('text/csv; charset=UTF-8')
-		filename = 'lstd_learning_network_stats.csv'
+		filename = '%s_learning_network_stats.csv' % course_filter.lower()
 		response.content_disposition = str( 'attachment; filename="%s"' % filename )
 		stream = BytesIO()
 		writer = csv.writer(stream)
 
 		catalog = component.getUtility( ICourseCatalog )
+		now = datetime.utcnow()
+
 		for entry in catalog.iterCatalogEntries():
 			course = ICourseInstance( entry, None )
+			# Skip if no course, no match, or not finished.
 			if 		course is None \
-				or 	course_filter not in entry.ProviderUniqueID:
+				or 	course_filter not in entry.ProviderUniqueID \
+				or  entry.EndDate > now:
 				continue
 			usernames = tuple(ICourseEnrollments(course).iter_principals())
 
 			start_time = end_time = None
 			if day_delta is not None:
-				start_time = entry.StartDate
-				end_time = start_time + day_delta
+				start_time = entry.StartDate - day_delta
+				end_time = entry.StartDate + day_delta
 
 			for username in usernames:
 				user = User.get_user(username)
