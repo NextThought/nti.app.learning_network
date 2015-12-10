@@ -80,6 +80,10 @@ def _add_stats_to_user_dict(user_dict, user, course, timestamp):
 			 permission=nauth.ACT_NTI_ADMIN,
 			 name=STATS_VIEW_NAME)
 class LearningNetworkCSVStats(AbstractAuthenticatedView):
+	"""
+	Fetches stats over a time range at the beginning of a course
+	along with course outcome stats.  Useful for data mining.
+	"""
 
 	type_stat_statvar_map = None
 
@@ -147,13 +151,17 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 		course = self.context
 		params = CaseInsensitiveDict(self.request.params)
 		course_filter = params.get( 'filter', '' )
-		day_delta = params.get( 'CourseStartDayDelta' )
-		day_delta = timedelta( days=int( day_delta ) ) if day_delta else None
+		day_delta_param = params.get( 'CourseStartDayDelta' )
+		day_delta = timedelta( days=int( day_delta_param ) ) if day_delta_param else None
+		# Only courses started after this date.
+		course_start_time = params.get( 'CourseStartTime' )
+		course_start_time = float( course_start_time ) if course_start_time else None
+		course_start_time = datetime.utcfromtimestamp( course_start_time ) if course_start_time else None
 
 		response = self.request.response
 		response.content_encoding = str( 'identity' )
 		response.content_type = str('text/csv; charset=UTF-8')
-		filename = '%s_learning_network_stats.csv' % course_filter.lower()
+		filename = '%s_%s_learning_network_stats.csv' % ( course_filter.lower(), day_delta_param )
 		response.content_disposition = str( 'attachment; filename="%s"' % filename )
 		stream = BytesIO()
 		writer = csv.writer(stream)
@@ -163,11 +171,15 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 
 		for entry in catalog.iterCatalogEntries():
 			course = ICourseInstance( entry, None )
-			# Skip if no course, no match, or not finished.
+			# Skip if no course, no match, not finished, or we have a
+			# course start param.
 			if 		course is None \
 				or 	course_filter not in entry.ProviderUniqueID \
-				or  entry.EndDate > now:
+				or  entry.EndDate > now \
+				or ( course_start_time and course_start_time < entry.StartDate ):
 				continue
+
+			writer.writerow( (entry.ProviderUniqueID, entry.StartDate, entry.EndDate, entry.ntiid) )
 			usernames = tuple(ICourseEnrollments(course).iter_principals())
 
 			start_time = end_time = None
