@@ -21,6 +21,8 @@ from zope import component
 from pyramid.view import view_config
 from pyramid import httpexceptions as hexc
 
+from nti.analytics.stats.interfaces import IStats
+
 from nti.app.base.abstract_views import AbstractAuthenticatedView
 
 from nti.common.maps import CaseInsensitiveDict
@@ -35,7 +37,6 @@ from nti.dataserver import authorization as nauth
 
 from nti.externalization.interfaces import LocatedExternalDict
 
-from nti.learning_network.interfaces import IStats
 from nti.learning_network.interfaces import IAccessStatsSource
 from nti.learning_network.interfaces import IOutcomeStatsSource
 from nti.learning_network.interfaces import IProductionStatsSource
@@ -43,7 +44,7 @@ from nti.learning_network.interfaces import IInteractionStatsSource
 
 from nti.ntiids.ntiids import find_object_with_ntiid
 
-from .connections import get_connection_graphs
+from nti.app.learning_network.connections import get_connection_graphs
 
 STATS_VIEW_NAME = "LearningNetworkStats"
 CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"
