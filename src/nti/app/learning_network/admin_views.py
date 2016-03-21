@@ -21,6 +21,7 @@ from zope import component
 from pyramid.view import view_config
 from pyramid import httpexceptions as hexc
 
+from nti.analytics.users import get_user_record
 from nti.analytics.stats.interfaces import IStats
 
 from nti.app.base.abstract_views import AbstractAuthenticatedView
@@ -31,9 +32,12 @@ from nti.contenttypes.courses.interfaces import ICourseCatalog
 from nti.contenttypes.courses.interfaces import ICourseInstance
 from nti.contenttypes.courses.interfaces import ICourseEnrollments
 
-from nti.dataserver.interfaces import IUser, IDataserverFolder
-from nti.dataserver.users.users import User
 from nti.dataserver import authorization as nauth
+
+from nti.dataserver.interfaces import IUser
+from nti.dataserver.interfaces import IDataserverFolder
+
+from nti.dataserver.users.users import User
 
 from nti.externalization.interfaces import LocatedExternalDict
 
@@ -82,8 +86,8 @@ def _add_stats_to_user_dict(user_dict, user, course, timestamp):
 			 name=STATS_VIEW_NAME)
 class LearningNetworkCSVStats(AbstractAuthenticatedView):
 	"""
-	Fetches stats over a time range at the beginning of a course
-	along with course outcome stats.  Useful for data mining.
+	Fetches and outputs stats in a CSV. Useful for generating data
+	for research purposes.
 	"""
 
 	type_stat_statvar_map = None
@@ -125,6 +129,11 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 
 			# Now build our headers (match iteration with stat iteration)
 			header_labels = []
+			if self.user_info:
+				header_labels.extend( ('user_id', 'username', 'username2') )
+			elif self.opaque_id:
+				header_labels.append( 'user_id' )
+
 			for source in sources:
 				source_type = self._get_source_str( source )
 				stat_map = type_stat_statvar_map.get( source_type  )
@@ -138,6 +147,12 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 		sources = _get_stats_for_user( user, course, start_time, end_time )
 		type_stat_statvar_map = self._get_headers( writer, *sources )
 		user_results = []
+		if self.user_info:
+			user_record = get_user_record( user )
+			user_results.extend( (user_record.user_id, user.username, user_record.username2) )
+		elif self.opaque_id:
+			user_record = get_user_record( user )
+			user_results.append( user_record.user_id )
 		for source in sources:
 			stat_map = type_stat_statvar_map.get( self._get_source_str( source )  )
 			for stat_name, stat_vars in stat_map.items():
@@ -148,45 +163,68 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 
 		writer.writerow( user_results )
 
-	def __call__(self):
-		course = self.context
-		params = CaseInsensitiveDict(self.request.params)
-		course_filter = params.get( 'filter', '' )
-		day_delta_param = params.get( 'CourseStartDayDelta' )
-		day_delta = timedelta( days=int( day_delta_param ) ) if day_delta_param else None
+	def _set_course_day_delta(self, params):
+		self.day_delta_param = params.get( 'CourseStartDayDelta' )
+		self.day_delta = timedelta( days=int( self.day_delta_param ) ) \
+						if self.day_delta_param else None
 		# Only courses started after this date.
 		course_start_time = params.get( 'CourseStartTime' )
 		course_start_time = float( course_start_time ) if course_start_time else None
-		course_start_time = datetime.utcfromtimestamp( course_start_time ) if course_start_time else None
+		self.course_start_time = datetime.utcfromtimestamp( course_start_time ) \
+								if course_start_time else None
 
+	def _set_times(self, params):
+		start_time = params.get( 'StartTime' )
+		end_time = params.get( 'EndTime' )
+		self.start_time = datetime.utcfromtimestamp( start_time ) if start_time else None
+		self.end_time = datetime.utcfromtimestamp( end_time ) if end_time else None
+
+	def _initialize(self):
+		params = CaseInsensitiveDict(self.request.params)
+		self.course_filter = params.get( 'filter', '' )
+		self.user_info = bool( params.get( 'UserInfo', False ) )
+		self.opaque_id = bool( params.get( 'OpaqueUserId', True ))
+		self.instructors = bool( params.get( 'Instructors', False ))
+		self._set_times( params )
+		self._set_course_day_delta( params )
+
+	def __call__(self):
+		self._initialize()
+		course = self.context
 		response = self.request.response
 		response.content_encoding = str( 'identity' )
 		response.content_type = str('text/csv; charset=UTF-8')
-		filename = '%s_%s_learning_network_stats.csv' % ( course_filter.lower(), day_delta_param )
+		filename = '%s_learning_network_stats.csv' % ( self.course_filter.lower() )
 		response.content_disposition = str( 'attachment; filename="%s"' % filename )
 		stream = BytesIO()
 		writer = csv.writer(stream)
 
 		catalog = component.getUtility( ICourseCatalog )
-		now = datetime.utcnow()
 
 		for entry in catalog.iterCatalogEntries():
 			course = ICourseInstance( entry, None )
 			# Skip if no course, no match, not finished, or we have a
-			# course start param.
+			# course start param that does not hit.
+			logger.info( 'Checking course (%s)', entry.ntiid )
 			if 		course is None \
-				or 	course_filter not in entry.ProviderUniqueID \
-				or  entry.EndDate > now \
-				or ( course_start_time and course_start_time < entry.StartDate ):
+				or 	self.course_filter not in entry.ntiid \
+				or ( self.course_start_time and self.course_start_time < entry.StartDate ):
 				continue
 
 			writer.writerow( (entry.ProviderUniqueID, entry.StartDate, entry.EndDate, entry.ntiid) )
-			usernames = tuple(ICourseEnrollments(course).iter_principals())
 
-			start_time = end_time = None
-			if day_delta is not None:
-				start_time = entry.StartDate - day_delta
-				end_time = entry.StartDate + day_delta
+			if self.instructors:
+				usernames = tuple( course.instructors )
+			else:
+				usernames = tuple(ICourseEnrollments(course).iter_principals())
+
+			start_time = self.start_time
+			end_time = self.end_time
+			if 		not start_time \
+				and not end_time \
+				and self.day_delta is not None:
+				start_time = entry.StartDate - self.day_delta
+				end_time = entry.StartDate + self.day_delta
 
 			for username in usernames:
 				user = User.get_user(username)
@@ -209,6 +247,7 @@ class LearningNetworkCourseStats(AbstractAuthenticatedView):
 	"""
 	For the given course (and possibly user or timestamp), return
 	the learning network stats for each user enrolled in the course.
+	FIXME: Needs to inherit from base class.
 	"""
 
 	def __call__(self):
