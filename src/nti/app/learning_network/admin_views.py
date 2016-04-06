@@ -107,6 +107,7 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 		Build up a consistent map of type->stat->stat_field so
 		our data points match up consistently for all users.
 		"""
+		# TODO: Look at csv.DictWriter, much easier.
 		if not self.type_stat_statvar_map:
 			type_stat_statvar_map = {}
 			for source in sources:
@@ -208,7 +209,7 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 			logger.info( 'Checking course (%s)', entry.ntiid )
 			if 		course is None \
 				or 	self.course_filter not in entry.ntiid \
-				or ( self.course_start_time and self.course_start_time < entry.StartDate ):
+				or (self.course_start_time and self.course_start_time < entry.StartDate):
 				continue
 
 			writer.writerow( (entry.ProviderUniqueID, entry.StartDate, entry.EndDate, entry.ntiid) )
