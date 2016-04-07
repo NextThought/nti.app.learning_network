@@ -1,0 +1,104 @@
+Analytics Stats Descriptions
+Note: all times are in seconds (s)
+
+Basic Statistical Categories:
+Access - The user viewed/accessed something on the system
+Production - The user created something on the platform (ex. notes, assignments, etc)
+Interaction - The user interacted with other users on the system. Some of these items may not be course-centric. The user may interact with other students outside of the course context.
+Outcomes - Outcomes of the user taking the course, whether it is the number of assignments taken or the average grade of assignments by the given user
+
+Basic definitions
+- Notes are comments created directly on the course content
+- FileUpload_<MimeType> - Uploaded objects on the Note/Forum comment; there should be an entry for all possible mime_types uploaded in system.
+- Thoughts is equivalent to blogs
+
+user_id - opaque user_id
+Access_SelfAssessmentStats_Count - How many times the user accessed self assessments
+Access_SelfAssessmentStats_AggregateTime - The total time the user viewed self assessments
+Access_SelfAssessmentStats_StandardDeviationDuration - The standard deviation time of the user viewed self assessments
+Access_SelfAssessmentStats_AverageDuration - The average time the user viewed self assessments
+Access_ReadingStats_Count - How many times the user viewed course reading materials
+Access_ReadingStats_AggregateTime - The total time in seconds the user viewed the reading materials
+Access_ReadingStats_StandardDeviationDuration - The standard deviation time of the user viewing the reading materials
+Access_ReadingStats_AverageDuration - The average time the user viewed the reading materials
+Access_VideoStats_Count - The number of times the user watched videos
+Access_VideoStats_AggregateTime - The total time the user watched videos
+Access_VideoStats_StandardDeviationDuration - The standard deviation of time the user watched videos
+Access_VideoStats_AverageDuration - The average duration of the user watching videos
+Access_ForumStats_Count - The number of times the user viewed Forums/Topics
+Access_ForumStats_AggregateTime - The total time the user viewed Forums/Topics
+Access_ForumStats_StandardDeviationDuration - The standard deviation time the user viewed Forums/Topics
+Access_ForumStats_AverageDuration - The average time the user viewed Forums/Topics
+Access_AssignmentStats_Count - The number of times the user viewed assignments
+Access_AssignmentStats_AggregateTime - The total time the user viewed assignments
+Access_AssignmentStats_StandardDeviationDuration - The standard deviation time the user viewed assignments
+Access_AssignmentStats_AverageDuration - The average time the user viewed assignments
+Access_PlatformStats_Count - The number of the times the user was on the platform (the logical sessions)
+Access_PlatformStats_AggregateTime - The total time the user was on the platform
+Access_PlatformStats_StandardDeviationDuration - The standard deviation of time the user was on the platform
+Access_PlatformStats_AverageDuration - The average time the user was on the platform
+Production_SelfAssessmentStats_Count - The number of self assessments the user took
+Production_SelfAssessmentStats_UniqueCount - The number of unique self assessments the user took
+Production_NoteStats_AverageLength - The average textual length of notes
+Production_NoteStats_Count - The number of notes created
+Production_NoteStats_TopLevelCount - The number of top level notes created (directly on the content)
+Production_NoteStats_FileUpload_image/jpeg - The number of uploaded files of the given type on notes (in this case, of JPEG images)
+Production_NoteStats_TotalLikes - The total like count on user notes.
+Production_NoteStats_TotalFavorites - The total favorite count on user notes.
+Production_NoteStats_DistinctPostsLiked - The number of distinct notes that had likes.
+Production_NoteStats_RecursiveChildrenCount - The total number of children/notes created underneath our user created notes.
+Production_NoteStats_DistinctPostsFavorited - The number of distinct posts that were favorited.
+Production_NoteStats_ReplyCount - The number of user notes that were replies to others' posts (not created directly on content)
+Production_NoteStats_ContainsWhiteboardCount - The number of notes that had whiteboards
+Production_NoteStats_StandardDeviationLength - The standard deviation of textual length of the user created notes
+Production_ThoughtStats_Count - The number of thoughts/blogs created by the user
+Production_BookmarkStats_Count - The number of bookmarked objects by the user
+Production_ThoughtCommentStats_AverageLength - The average length of comments created in thoughts/blogs (may be in any user's blog)
+Production_ThoughtCommentStats_Count - The number of comments created in thoughts/blogs
+Production_ThoughtCommentStats_TopLevelCount - The number of top-level comments created in thoughts/blogs (directly under a blog post)
+Production_ThoughtCommentStats_FileUpload_image/jpeg - The number of uploaded files of the given type on thought/blog comments (in this case, of JPEG images)
+Production_ThoughtCommentStats_TotalLikes - The total number of likes on thought/blog comments
+Production_ThoughtCommentStats_TotalFavorites - The total number of favorites on thought/blog comments
+Production_ThoughtCommentStats_DistinctPostsLiked - The distinct number of thought/blog comments that had likes
+Production_ThoughtCommentStats_RecursiveChildrenCount - The number of thought/blog comments underneath user created thought/blog posts
+Production_ThoughtCommentStats_DistinctPostsFavorited - The distinct number of thought/blog comments that had favorites
+Production_ThoughtCommentStats_ReplyCount - The number of non-top-level thought/blog comments created (not directly under any user's blog post)
+Production_ThoughtCommentStats_ContainsWhiteboardCount - The number of blog comments that contains a whiteboard
+Production_ThoughtCommentStats_StandardDeviationLength - The standard deviation of textual length of thought/blog comments
+Production_AssignmentStats_Count - The total number of assignments taken by user
+Production_AssignmentStats_UniqueCount - The number of unique assignments taken by user
+Production_AssignmentStats_TimedAssignmentLateCount - The number of timed assignments submitted late by user
+Production_AssignmentStats_TimedAssignmentCount - The number of timed assignments taken
+Production_AssignmentStats_AssignmentLateCount - The total number of assignments submitted late
+Production_CommentStats_AverageLength - The average textual length of forum comments
+Production_CommentStats_Count - The number of forum comments
+Production_CommentStats_TopLevelCount - The number of forum comments created at the top-level (directly underneath the topic/discussion)
+Production_CommentStats_FileUpload_image/jpeg - The number of uploaded files of the given type on forum comments (in this case, of JPEG images)
+Production_CommentStats_TotalLikes - The total number of likes on forum comments
+Production_CommentStats_TotalFavorites - The total number of favorites on forum comments
+Production_CommentStats_DistinctPostsLiked - The number of distinct forum comments with likes
+Production_CommentStats_RecursiveChildrenCount - The number of forum comments created underneath user created forum comments
+Production_CommentStats_DistinctPostsFavorited - The number of distinct forum comments with favorites
+Production_CommentStats_ReplyCount - The number of forum comments created as replies to other users' comments (not direclty underneath the topic/discussion)
+Production_CommentStats_ContainsWhiteboardCount - The number of forum comments containing whiteboards
+Production_CommentStats_StandardDeviationLength - The standard deviation in textual length of forum comments
+Production_HighlightStats_Count - The number of highlights created by the user on content
+Interaction_GroupStats_DistinctUsersInGroupsCount - The number of distinct users in groups our user is a member of
+Interaction_GroupStats_UsersInGroupsCount - The number of users in groups our user is a member of
+Interaction_GroupStats_GroupsCreatedCount - The total number of groups created by our user
+Interaction_GroupStats_GroupsJoinedCount - The number of groups joined by our user
+Interaction_SocialStats_DistinctReplyToCount - The number of distinct users replying to our user in notes, forum comments, blogs.
+Interaction_SocialStats_DistinctUserReplyToOthersCount - The number of distinct users our user replied to in notes, forum comments, blogs.
+Interaction_SocialStats_ContactsAddedCount - The number of contacts added by our user
+Outcome_BadgeStats_HasBadge - T/F whether the user got a badge in the course (optional)
+Outcome_AssignmentStats_Count - The number of assignments taken by the user
+Outcome_AssignmentStats_UniqueCount - The number of unique assignments taken by the user
+Outcome_AssignmentStats_TotalPoints - The total number of points the user had in course (may not match syllabus)
+Outcome_AssignmentStats_FinalGradeNumeric - The numerical final grade given to the user (some courses do not have this)
+Outcome_AssignmentStats_MaxPointCount - The maximum number of points possible in the course (may not match syllabus)
+Outcome_AssignmentStats_AverageGrade - The average grade on assignments for the user
+Outcome_AssignmentStats_TimedAssignmentCount - The number of timed assignments taken
+Outcome_AssignmentStats_MaxAssignmentCount - The maximum number of assignments available
+Outcome_AssignmentStats_FinalGradeAlpha - The alpha/numeric final grade given to the user (some courses do not have this)
+Outcome_AssignmentStats_AssignmentLateCount - The number of assignments submitted late by the user
+Outcome_AssignmentStats_TimedAssignmentLateCount - The number of timed assignments submitted late
