@@ -13,6 +13,8 @@ import csv
 
 from io import BytesIO
 
+from collections import Mapping
+
 from datetime import datetime
 from datetime import timedelta
 
@@ -22,7 +24,7 @@ from pyramid.view import view_config
 from pyramid import httpexceptions as hexc
 
 from nti.analytics.users import get_user_record
-from nti.analytics.stats.interfaces import IStats
+from nti.analytics.stats.interfaces import IStats, IAnalyticsStatsSource
 
 from nti.app.base.abstract_views import AbstractAuthenticatedView
 
@@ -64,19 +66,25 @@ def _get_stat_source(iface, user, course, timestamp=None, max_timestamp=None):
 		stats_source = iface(user, None)
 	return stats_source
 
+def _get_subscribers( user, course ):
+	return component.subscribers( (user, course), IAnalyticsStatsSource )
+
 def _get_stats_for_user( user, course, timestamp=None, max_timestamp=None ):
 	access_source = _get_stat_source(IAccessStatsSource, user, course, timestamp, max_timestamp)
 	prod_source = _get_stat_source(IProductionStatsSource, user, course, timestamp, max_timestamp)
 	social_source = _get_stat_source(IInteractionStatsSource, user, course, timestamp, max_timestamp)
 	outcome_source = _get_stat_source(IOutcomeStatsSource, user, course)
-	return access_source, prod_source, social_source, outcome_source
+	stats = _get_subscribers(user, course)
+	stats.append( access_source )
+	stats.append( prod_source )
+	stats.append( social_source )
+	stats.append( outcome_source )
+	return stats
 
 def _add_stats_to_user_dict(user_dict, user, course, timestamp):
-	access_source, prod_source, social_source, outcome_source = _get_stats_for_user( user, course, timestamp )
-	user_dict['Access'] = access_source
-	user_dict['Production'] = prod_source
-	user_dict['Interaction'] = social_source
-	user_dict['Outcomes'] = outcome_source
+	stats = _get_stats_for_user( user, course, timestamp )
+	for stat in stats:
+		user_dict[stat.display_name] = stat
 
 @view_config(route_name='objects.generic.traversal',
 			 renderer='rest',
@@ -93,14 +101,7 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 	type_stat_statvar_map = None
 
 	def _get_source_str(self, source):
-		if IAccessStatsSource.providedBy( source ):
-			return 'Access'
-		if IProductionStatsSource.providedBy( source ):
-			return 'Production'
-		if IInteractionStatsSource.providedBy( source ):
-			return 'Interaction'
-		if IOutcomeStatsSource.providedBy( source ):
-			return 'Outcome'
+		return getattr( source, 'display_name', '' )
 
 	def _get_headers( self, writer, *sources ):
 		"""
@@ -159,7 +160,7 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 			for stat_name, stat_vars in stat_map.items():
 				stat = getattr( source, stat_name )
 				for stat_var in stat_vars:
-					stat_value = getattr( stat, stat_var )
+					stat_value = getattr( stat, stat_var ) if stat is not None else ''
 					user_results.append( stat_value )
 
 		writer.writerow( user_results )
