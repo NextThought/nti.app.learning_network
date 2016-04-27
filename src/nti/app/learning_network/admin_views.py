@@ -13,8 +13,6 @@ import csv
 
 from io import BytesIO
 
-from collections import Mapping
-
 from datetime import datetime
 from datetime import timedelta
 
