@@ -22,11 +22,22 @@ from pyramid.view import view_config
 from pyramid import httpexceptions as hexc
 
 from nti.analytics.users import get_user_record
-from nti.analytics.stats.interfaces import IStats, IAnalyticsStatsSource
+
+from nti.analytics.boards import get_topic_views
+from nti.analytics.boards import get_forum_comments
+
+from nti.analytics.resource_tags import get_note_views
+
+from nti.analytics.stats.interfaces import IStats
+from nti.analytics.stats.interfaces import IAnalyticsStatsSource
 
 from nti.app.base.abstract_views import AbstractAuthenticatedView
 
 from nti.common.maps import CaseInsensitiveDict
+
+from nti.common.property import Lazy
+
+from nti.contenttypes.courses.interfaces import ES_CREDIT
 
 from nti.contenttypes.courses.interfaces import ICourseCatalog
 from nti.contenttypes.courses.interfaces import ICourseInstance
@@ -34,8 +45,11 @@ from nti.contenttypes.courses.interfaces import ICourseEnrollments
 
 from nti.dataserver import authorization as nauth
 
+from nti.dataserver.authorization_acl import has_permission
+
 from nti.dataserver.interfaces import IUser
 from nti.dataserver.interfaces import IDataserverFolder
+from nti.dataserver.interfaces import IEnumerableEntityContainer
 
 from nti.dataserver.users.users import User
 
@@ -84,16 +98,57 @@ def _add_stats_to_user_dict(user_dict, user, course, timestamp):
 	for stat in stats:
 		user_dict[stat.display_name] = stat
 
+class _AbstractCSVView(AbstractAuthenticatedView):
+
+	def _initialize(self):
+		params = CaseInsensitiveDict(self.request.params)
+		self.course_filter = params.get( 'filter', '' )
+		self.user_info = bool( params.get( 'UserInfo', False ) )
+		self.opaque_id = bool( params.get( 'OpaqueUserId', True ))
+		self.instructors = bool( params.get( 'Instructors', False ))
+		self._set_times( params )
+		self._set_course_day_delta( params )
+
+	def accept_course_entry(self, entry):
+		# Skip if no course, no match, or we have a course start param that does not hit.
+		logger.info( 'Checking course (%s)', entry.ntiid )
+		return 	self.course_filter \
+			and self.course_filter in entry.ntiid \
+			and (	self.course_start_time is None \
+				or 	self.course_start_time < entry.StartDate)
+
 @view_config(route_name='objects.generic.traversal',
 			 renderer='rest',
 			 request_method='GET',
 			 context=IDataserverFolder,
 			 permission=nauth.ACT_NTI_ADMIN,
 			 name=STATS_VIEW_NAME)
-class LearningNetworkCSVStats(AbstractAuthenticatedView):
+class LearningNetworkCSVStats(_AbstractCSVView):
 	"""
 	Fetches and outputs stats in a CSV. Useful for generating data
-	for research purposes.
+	for research purposes. Can be given a filter for many courses.
+
+	params:
+
+		filter - str course filter on catalog entry ntiid
+
+		UserInfo - whether to includer username and other user info in results
+			(defaults to False)
+
+		OpaqueUserId = whether to include an opaque user id in the results
+			(defaults to True)
+
+		Instructors - whether to include instructor stats
+			(defaults to False)
+
+		StartTime/EndTime - the timestamp boundaries on which to pull data (default None)
+
+		CourseStartDayDelta - if no start/end time given, the number of days from course start
+			can be given to pull data from.
+
+		CourseStartTime - part of the course filter that only pulls courses that start *before*
+			this date.
+
 	"""
 
 	type_stat_statvar_map = None
@@ -179,22 +234,13 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 		self.start_time = datetime.utcfromtimestamp( start_time ) if start_time else None
 		self.end_time = datetime.utcfromtimestamp( end_time ) if end_time else None
 
-	def _initialize(self):
-		params = CaseInsensitiveDict(self.request.params)
-		self.course_filter = params.get( 'filter', '' )
-		self.user_info = bool( params.get( 'UserInfo', False ) )
-		self.opaque_id = bool( params.get( 'OpaqueUserId', True ))
-		self.instructors = bool( params.get( 'Instructors', False ))
-		self._set_times( params )
-		self._set_course_day_delta( params )
-
 	def __call__(self):
 		self._initialize()
 		course = self.context
 		response = self.request.response
 		response.content_encoding = str( 'identity' )
 		response.content_type = str('text/csv; charset=UTF-8')
-		filename = '%s_learning_network_stats.csv' % ( self.course_filter.lower() )
+		filename = '%s_stats.csv' % ( self.course_filter.lower() )
 		response.content_disposition = str( 'attachment; filename="%s"' % filename )
 		stream = BytesIO()
 		writer = csv.writer(stream)
@@ -203,12 +249,7 @@ class LearningNetworkCSVStats(AbstractAuthenticatedView):
 
 		for entry in catalog.iterCatalogEntries():
 			course = ICourseInstance( entry, None )
-			# Skip if no course, no match, not finished, or we have a
-			# course start param that does not hit.
-			logger.info( 'Checking course (%s)', entry.ntiid )
-			if 		course is None \
-				or 	self.course_filter not in entry.ntiid \
-				or (self.course_start_time and self.course_start_time < entry.StartDate):
+			if course is None or not self.accept_course_entry( entry ):
 				continue
 
 			writer.writerow( (entry.ProviderUniqueID, entry.StartDate, entry.EndDate, entry.ntiid) )
@@ -247,7 +288,6 @@ class LearningNetworkCourseStats(AbstractAuthenticatedView):
 	"""
 	For the given course (and possibly user or timestamp), return
 	the learning network stats for each user enrolled in the course.
-	FIXME: Needs to inherit from base class.
 	"""
 
 	def __call__(self):
@@ -282,6 +322,143 @@ class LearningNetworkCourseStats(AbstractAuthenticatedView):
 
 		result['ItemCount'] = len(usernames)
 		return result
+
+@view_config(route_name='objects.generic.traversal',
+			 renderer='rest',
+			 request_method='GET',
+			 context=IDataserverFolder,
+			 permission=nauth.ACT_NTI_ADMIN,
+			 name='SocialConnections')
+class SocialConnectionsCSVStats(_AbstractCSVView):
+	"""
+	Fetches and outputs stats in a CSV. Useful for generating data
+	for research purposes.
+
+	This just shows comment/notes views by for-credit students.
+	Could add filters by type of viewing/commenting student as well
+	as easily fetching the comment social connections (creator/reply-to).
+	"""
+
+	def _get_scope_usernames(self, scope):
+		result = set()
+		if scope:
+			result = {x.lower() for x in IEnumerableEntityContainer(scope).iter_usernames()}
+		return result
+
+	def _get_instructors(self, course):
+		instructor_usernames = {x.username.lower() for x in course.instructors}
+		return instructor_usernames
+
+	def _get_all_students(self, course):
+		enrollments = ICourseEnrollments( course )
+		result = set((x.lower() for x in enrollments.iter_principals()))
+		return result - self._get_instructors( course )
+
+	@Lazy
+	def _only_public_usernames(self):
+		# PURCHASED falls in this category.
+		return self._all_students - self._for_credit_usernames
+
+	def _get_for_credit_scope(self, course):
+		return course.SharingScopes.get(ES_CREDIT)
+
+	def _get_for_credit_usernames(self, course, all_students):
+		scope = self._get_for_credit_scope( course )
+		result = self._get_scope_usernames( scope )
+		return result & all_students
+
+	def _write_topic_views( self, writer, course, for_credit_usernames ):
+		"""
+		Write out those for credit students that have viewed
+		comments to show social connections.
+		"""
+		views = get_topic_views( course=course )
+		comments_created = get_forum_comments( course=course )
+		topic_comments = dict()
+		for comment in comments_created:
+			comments = topic_comments.setdefault( comment.topic_id, [] )
+			comments.append( comment )
+
+		seen_comments = set()
+		for view in views:
+			comments = topic_comments.get( view.topic_id, () )
+			if not comments:
+				continue
+			# Comment created before view.
+			view_comments = (x for x in comments if x.timestamp < view.timestamp)
+			for view_comment in view_comments:
+				# User only sees comment the first time?
+				key = (view.user_id, view_comment.comment_id)
+				if key in seen_comments:
+					continue
+				seen_comments.add( key )
+				if view.user is None:
+					logger.warn( 'User is None: %s', view.user_id)
+					continue
+				if 		view.user.username.lower() in for_credit_usernames:
+					writer.writerow( (view.user_id,
+									  view_comment.user_id,
+									  view.timestamp,
+									  'CommentViewed') )
+
+	def _write_note_views( self, writer, course, for_credit_usernames ):
+		"""
+		Write out those for credit students that have viewed
+		notes to show social connections.
+		"""
+		views = get_note_views( course=course )
+		seen_notes = set()
+		for view in views:
+			if view.Note is None:
+				continue
+			notes = (view.Note,) + tuple( view.Note.referents )
+			for note in notes:
+				# Viewed if created and readable (which could have changed)...
+				key = (view.user_id, note._ds_intid)
+				if key in seen_notes:
+					continue
+				seen_notes.add( key )
+				if view.user is None:
+					logger.warn( 'User is None: %s', view.user_id)
+					continue
+				if 		note.created < view.timestamp \
+					and view.user.username.lower() in for_credit_usernames \
+					and has_permission( nauth.ACT_READ, note, view.user.username ):
+					user_record = get_user_record( note.creator )
+					writer.writerow( (view.user_id,
+									  user_record.user_id,
+									  view.timestamp,
+									  'NoteViewed') )
+
+	def __call__(self):
+		self._initialize()
+		course = self.context
+		response = self.request.response
+		response.content_encoding = str( 'identity' )
+		response.content_type = str('text/csv; charset=UTF-8')
+		filename = '%s_stats.csv' % ( self.course_filter.lower() )
+		response.content_disposition = str( 'attachment; filename="%s"' % filename )
+		stream = BytesIO()
+		writer = csv.writer(stream)
+
+		catalog = component.getUtility( ICourseCatalog )
+
+		for entry in catalog.iterCatalogEntries():
+			course = self.course = ICourseInstance( entry, None )
+			if course is None or not self.accept_course_entry( entry ):
+				continue
+
+			writer.writerow( ('source', 'target', 'timestamp', 'label') )
+
+			all_students = self._get_all_students( course )
+			for_credit_usernames = self._get_for_credit_usernames( course, all_students )
+			self._write_topic_views( writer, course, for_credit_usernames )
+			self._write_note_views( writer, course, for_credit_usernames )
+
+		stream.flush()
+		stream.seek(0)
+		response.body_file = stream
+		return response
 
 @view_config(route_name='objects.generic.traversal',
 			 renderer='rest',
@@ -321,8 +498,8 @@ class LearningNetworkUserStats(AbstractAuthenticatedView):
 			 name=CONNECTIONS_VIEW_NAME)
 class CourseConnectionGraph(AbstractAuthenticatedView):
 	"""
-	For the given course (and possibly timestamp), return
-	the connections (in graph or gif form?).
+	For the given course (and possibly timestamp), return the connections
+	(in graph or gif form?).
 	"""
 
 	def __call__(self):
