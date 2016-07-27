@@ -33,7 +33,8 @@ setup(
 	install_requires=[
 		'collective.monkeypatcher',
 		'setuptools',
-		'nti.learning_network'
+		'nti.learning_network',
+		'nti.app.analytics_registration'
 	],
 	entry_points=entry_points
 )

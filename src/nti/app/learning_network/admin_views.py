@@ -31,6 +31,9 @@ from nti.analytics.resource_tags import get_note_views
 from nti.analytics.stats.interfaces import IStats
 from nti.analytics.stats.interfaces import IAnalyticsStatsSource
 
+from nti.app.analytics_registration.view_mixins import RegistrationIDViewMixin
+from nti.app.analytics_registration.view_mixins import RegistrationSurveyCSVMixin
+
 from nti.app.base.abstract_views import AbstractAuthenticatedView
 
 from nti.common.maps import CaseInsensitiveDict
@@ -66,6 +69,7 @@ from nti.app.learning_network.connections import get_connection_graphs
 
 STATS_VIEW_NAME = "LearningNetworkStats"
 CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"
+REGISTRATION_STATS_VIEW_NAME = "RegistrationSurveyLearningNetworkStats"
 
 def _get_stat_source(iface, user, course, timestamp=None, max_timestamp=None):
 	if course and timestamp and max_timestamp:
@@ -156,10 +160,12 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 	def _get_source_str(self, source):
 		return getattr( source, 'display_name', '' )
 
-	def _get_headers( self, writer, *sources ):
+	def _get_headers( self, *sources ):
 		"""
 		Build up a consistent map of type->stat->stat_field so
 		our data points match up consistently for all users.
+		We lazily create the header row using the first data sources we get.
+		This allows us to dynamically generate headers based on stat fields.
 		"""
 		# TODO: Look at csv.DictWriter, much easier.
 		if not self.type_stat_statvar_map:
@@ -182,25 +188,10 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 
 			self.type_stat_statvar_map = type_stat_statvar_map
 
-			# Now build our headers (match iteration with stat iteration)
-			header_labels = []
-			if self.user_info:
-				header_labels.extend( ('user_id', 'username', 'username2') )
-			elif self.opaque_id:
-				header_labels.append( 'user_id' )
-
-			for source in sources:
-				source_type = self._get_source_str( source )
-				stat_map = type_stat_statvar_map.get( source_type  )
-				for stat_name, stat_vars in stat_map.items():
-					for stat_var in stat_vars:
-						header_labels.append( '%s_%s_%s' % ( source_type, stat_name, stat_var ))
-			writer.writerow( header_labels )
 		return self.type_stat_statvar_map
 
-	def _write_stats_for_user( self, writer, user, course, start_time, end_time ):
-		sources = _get_stats_for_user( user, course, start_time, end_time )
-		type_stat_statvar_map = self._get_headers( writer, *sources )
+	def _write_stats_for_user( self, writer, user, sources ):
+		type_stat_statvar_map = self._get_headers( *sources )
 		user_results = []
 		if self.user_info:
 			user_record = get_user_record( user )
@@ -234,6 +225,35 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		self.start_time = datetime.utcfromtimestamp( start_time ) if start_time else None
 		self.end_time = datetime.utcfromtimestamp( end_time ) if end_time else None
 
+	def _get_additional_headers(self):
+		pass
+
+	def _write_headers(self, writer, sources):
+		"""
+		Write our headers:
+			* user
+			* additional headers
+			* stats
+		"""
+		# Now build our headers (match iteration with stat iteration)
+		header_labels = []
+		if self.user_info:
+			header_labels.extend( ('user_id', 'username', 'username2') )
+		elif self.opaque_id:
+			header_labels.append( 'user_id' )
+
+		additional_headers = self._get_additional_headers()
+		if additional_headers:
+			header_labels.extend( additional_headers )
+
+		for source in sources:
+			source_type = self._get_source_str( source )
+			stat_map = self.type_stat_statvar_map.get( source_type  )
+			for stat_name, stat_vars in stat_map.items():
+				for stat_var in stat_vars:
+					header_labels.append( '%s_%s_%s' % ( source_type, stat_name, stat_var ))
+		writer.writerow( header_labels )
+
 	def __call__(self):
 		self._initialize()
 		course = self.context
@@ -252,7 +272,8 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			if course is None or not self.accept_course_entry( entry ):
 				continue
 
-			writer.writerow( (entry.ProviderUniqueID, entry.StartDate, entry.EndDate, entry.ntiid) )
+			# Per course information useful?
+			#writer.writerow( (entry.ProviderUniqueID, entry.StartDate, entry.EndDate, entry.ntiid) )
 
 			if self.instructors:
 				usernames = tuple( course.instructors )
@@ -267,16 +288,46 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 				start_time = entry.StartDate - self.day_delta
 				end_time = entry.StartDate + self.day_delta
 
+			headers_written = False
 			for username in usernames:
 				user = User.get_user(username)
 				if 		user is not None \
 					and not username.endswith( '@nextthought.com' ):
-					self._write_stats_for_user( writer, user, course, start_time, end_time )
+
+					sources = _get_stats_for_user( user, course, start_time, end_time )
+					if not headers_written:
+						# We defer writing headers until we get our stat sources.
+						self._write_headers( writer, sources )
+					self._write_stats_for_user( writer, user, sources )
 
 		stream.flush()
 		stream.seek(0)
 		response.body_file = stream
 		return response
+
+@view_config(route_name='objects.generic.traversal',
+			 renderer='rest',
+			 request_method='GET',
+			 context=IDataserverFolder,
+			 permission=nauth.ACT_NTI_ADMIN,
+			 name=REGISTRATION_STATS_VIEW_NAME)
+class LearningNetworkRegistrationSurveyCSVStats(LearningNetworkCSVStats,
+												RegistrationSurveyCSVMixin,
+												RegistrationIDViewMixin):
+	"""
+	For the given course, fetch the registration, registration survey,
+	post-survey data, as well as the analytics stats per row for each user.
+
+	params:
+
+		*params from super class*
+
+		PostSurveyNTIID - fetch the survey question/responses for each user.
+
+	"""
+
+	def _get_additional_headers(self):
+		pass
 
 @view_config(route_name='objects.generic.traversal',
 			 renderer='rest',
@@ -436,7 +487,7 @@ class SocialConnectionsCSVStats(_AbstractCSVView):
 		response = self.request.response
 		response.content_encoding = str( 'identity' )
 		response.content_type = str('text/csv; charset=UTF-8')
-		filename = '%s_stats.csv' % ( self.course_filter.lower() )
+		filename = '%s_social_stats.csv' % ( self.course_filter.lower() )
 		response.content_disposition = str( 'attachment; filename="%s"' % filename )
 		stream = BytesIO()
 		writer = csv.writer(stream)
