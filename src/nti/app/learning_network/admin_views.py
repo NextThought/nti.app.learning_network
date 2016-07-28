@@ -160,14 +160,16 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 	def _get_source_str(self, source):
 		return getattr( source, 'display_name', '' )
 
-	def _get_headers( self, *sources ):
+	def _get_stat_str(self, source_type, stat_name, stat_var ):
+		return '%s_%s_%s' % ( source_type, stat_name, stat_var )
+
+	def _get_type_stat_statvar_map( self, sources ):
 		"""
 		Build up a consistent map of type->stat->stat_field so
 		our data points match up consistently for all users.
 		We lazily create the header row using the first data sources we get.
 		This allows us to dynamically generate headers based on stat fields.
 		"""
-		# TODO: Look at csv.DictWriter, much easier.
 		if not self.type_stat_statvar_map:
 			type_stat_statvar_map = {}
 			for source in sources:
@@ -181,7 +183,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 						stat_map[ source_var ] = source_stats = []
 
 						for stat_var in vars( stat ):
-							# How do we get 'parameters'?
+							# XXX: How do we get 'parameters'?
 							if 		not stat_var.startswith( '_' ) \
 								and stat_var != 'parameters':
 								source_stats.append( stat_var )
@@ -191,21 +193,29 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		return self.type_stat_statvar_map
 
 	def _write_stats_for_user( self, writer, user, sources ):
-		type_stat_statvar_map = self._get_headers( *sources )
-		user_results = []
+		type_stat_statvar_map = self._get_type_stat_statvar_map( sources )
+		user_results = {}
+		user_record = get_user_record( user )
+		if user_record is None:
+			return
+		# First user info
 		if self.user_info:
-			user_record = get_user_record( user )
-			user_results.extend( (user_record.user_id, user.username, user_record.username2) )
+			user_results.update( {'user_id': user_record.user_id,
+								  'username': user.username,
+								  'username2': user_record.username2} )
 		elif self.opaque_id:
-			user_record = get_user_record( user )
-			user_results.append( user_record.user_id )
+			user_results['user_id'] = user_record.user_id
+
+		# Then stat data
 		for source in sources:
+			source_type = self._get_source_str( source )
 			stat_map = type_stat_statvar_map.get( self._get_source_str( source )  )
 			for stat_name, stat_vars in stat_map.items():
 				stat = getattr( source, stat_name )
 				for stat_var in stat_vars:
 					stat_value = getattr( stat, stat_var ) if stat is not None else ''
-					user_results.append( stat_value )
+					header_label = self._get_stat_str( source_type, stat_name, stat_var )
+					user_results[header_label] = stat_value
 
 		writer.writerow( user_results )
 
@@ -228,7 +238,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 	def _get_additional_headers(self):
 		pass
 
-	def _write_headers(self, writer, sources):
+	def _get_headers(self, sources):
 		"""
 		Write our headers:
 			* user
@@ -246,13 +256,16 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		if additional_headers:
 			header_labels.extend( additional_headers )
 
+		type_stat_statvar_map = self._get_type_stat_statvar_map( sources )
+
 		for source in sources:
 			source_type = self._get_source_str( source )
-			stat_map = self.type_stat_statvar_map.get( source_type  )
+			stat_map = type_stat_statvar_map.get( source_type  )
 			for stat_name, stat_vars in stat_map.items():
 				for stat_var in stat_vars:
-					header_labels.append( '%s_%s_%s' % ( source_type, stat_name, stat_var ))
-		writer.writerow( header_labels )
+					header_label = self._get_stat_str( source_type, stat_name, stat_var )
+					header_labels.append( header_label )
+		return header_labels
 
 	def __call__(self):
 		self._initialize()
@@ -263,7 +276,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		filename = '%s_stats.csv' % ( self.course_filter.lower() )
 		response.content_disposition = str( 'attachment; filename="%s"' % filename )
 		stream = BytesIO()
-		writer = csv.writer(stream)
+		writer = None
 
 		catalog = component.getUtility( ICourseCatalog )
 
@@ -272,8 +285,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			if course is None or not self.accept_course_entry( entry ):
 				continue
 
-			# Per course information useful?
-			#writer.writerow( (entry.ProviderUniqueID, entry.StartDate, entry.EndDate, entry.ntiid) )
+			logger.info( 'Fetching stat data for %s', entry.ntiid )
 
 			if self.instructors:
 				usernames = tuple( course.instructors )
@@ -288,16 +300,17 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 				start_time = entry.StartDate - self.day_delta
 				end_time = entry.StartDate + self.day_delta
 
-			headers_written = False
 			for username in usernames:
 				user = User.get_user(username)
 				if 		user is not None \
 					and not username.endswith( '@nextthought.com' ):
 
 					sources = _get_stats_for_user( user, course, start_time, end_time )
-					if not headers_written:
+					if writer is None:
 						# We defer writing headers until we get our stat sources.
-						self._write_headers( writer, sources )
+						headers = self._get_headers( sources )
+						writer = csv.DictWriter( stream, headers )
+						writer.writeheader()
 					self._write_stats_for_user( writer, user, sources )
 
 		stream.flush()
