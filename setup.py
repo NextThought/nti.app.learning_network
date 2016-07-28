@@ -37,7 +37,7 @@ setup(
 	install_requires=[
 		'collective.monkeypatcher',
 		'setuptools',
-		'pygraphviz' if not IS_PYPY else '',
+		 # 'pygraphviz' if not IS_PYPY else '',
 		'nti.learning_network',
 		'nti.app.analytics_registration'
 	],
