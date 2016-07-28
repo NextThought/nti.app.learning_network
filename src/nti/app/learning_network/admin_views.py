@@ -69,7 +69,7 @@ from nti.app.learning_network.connections import get_connection_graphs
 
 STATS_VIEW_NAME = "LearningNetworkStats"
 CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"
-REGISTRATION_STATS_VIEW_NAME = "RegistrationSurveyLearningNetworkStats"
+SURVEY_STATS_VIEW_NAME = "SurveyLearningNetworkStats"
 
 def _get_stat_source(iface, user, course, timestamp=None, max_timestamp=None):
 	if course and timestamp and max_timestamp:
@@ -115,7 +115,7 @@ class _AbstractCSVView(AbstractAuthenticatedView):
 
 	def accept_course_entry(self, entry):
 		# Skip if no course, no match, or we have a course start param that does not hit.
-		logger.info( 'Checking course (%s)', entry.ntiid )
+		logger.debug( 'Checking course (%s)', entry.ntiid )
 		return 	self.course_filter \
 			and self.course_filter in entry.ntiid \
 			and (	self.course_start_time is None \
@@ -192,7 +192,10 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 
 		return self.type_stat_statvar_map
 
-	def _write_stats_for_user( self, writer, user, sources ):
+	def _get_row_for_user( self, user, sources ):
+		"""
+		Gather the data dict for the user from the given sources.
+		"""
 		type_stat_statvar_map = self._get_type_stat_statvar_map( sources )
 		user_results = {}
 		user_record = get_user_record( user )
@@ -216,7 +219,10 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 					stat_value = getattr( stat, stat_var ) if stat is not None else ''
 					header_label = self._get_stat_str( source_type, stat_name, stat_var )
 					user_results[header_label] = stat_value
+		return user_results
 
+	def _write_stats_for_user( self, writer, user, sources ):
+		user_results = self._get_row_for_user( user, sources )
 		writer.writerow( user_results )
 
 	def _set_course_day_delta(self, params):
@@ -235,9 +241,6 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		self.start_time = datetime.utcfromtimestamp( start_time ) if start_time else None
 		self.end_time = datetime.utcfromtimestamp( end_time ) if end_time else None
 
-	def _get_additional_headers(self):
-		pass
-
 	def _get_headers(self, sources):
 		"""
 		Write our headers:
@@ -251,10 +254,6 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			header_labels.extend( ('user_id', 'username', 'username2') )
 		elif self.opaque_id:
 			header_labels.append( 'user_id' )
-
-		additional_headers = self._get_additional_headers()
-		if additional_headers:
-			header_labels.extend( additional_headers )
 
 		type_stat_statvar_map = self._get_type_stat_statvar_map( sources )
 
@@ -323,13 +322,13 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			 request_method='GET',
 			 context=IDataserverFolder,
 			 permission=nauth.ACT_NTI_ADMIN,
-			 name=REGISTRATION_STATS_VIEW_NAME)
-class LearningNetworkRegistrationSurveyCSVStats(LearningNetworkCSVStats,
-												RegistrationSurveyCSVMixin,
-												RegistrationIDViewMixin):
+			 name=SURVEY_STATS_VIEW_NAME)
+class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats,
+									RegistrationSurveyCSVMixin,
+									RegistrationIDViewMixin):
 	"""
-	For the given course, fetch the registration, registration survey,
-	post-survey data, as well as the analytics stats per row for each user.
+	For the given course, fetch any registered analytic stats sources,
+	supplemented by the post-survey data specified by the param.
 
 	params:
 
@@ -339,8 +338,31 @@ class LearningNetworkRegistrationSurveyCSVStats(LearningNetworkCSVStats,
 
 	"""
 
-	def _get_additional_headers(self):
+	def _get_survey_question_key(self, question):
 		pass
+
+	def _get_survey_headers(self):
+		return ()
+
+	def _get_headers(self, *args, **kwargs):
+		headers = super( LearningNetworkSurveyCSVStats, self )._get_headers( *args, **kwargs )
+		survey_headers = self._get_survey_headers()
+		# TODO: Check for collisions
+		headers.extend( survey_headers )
+		return headers
+
+	def _get_survey_responses(self, user):
+		# Need to map our header (title) to the response
+		return {}
+
+	def _get_row_for_user( self, user, *args, **kwargs ):
+		"""
+		Gather the data dict for the user from the given sources.
+		"""
+		user_results = super( LearningNetworkSurveyCSVStats, self )._get_row_for_user( user, *args, **kwargs )
+		survey_results = self._get_survey_responses( user )
+		user_results.update( survey_results )
+		return user_results
 
 @view_config(route_name='objects.generic.traversal',
 			 renderer='rest',
