@@ -34,11 +34,15 @@ from nti.analytics.stats.interfaces import IAnalyticsStatsSource
 from nti.app.analytics_registration.view_mixins import RegistrationIDViewMixin
 from nti.app.analytics_registration.view_mixins import RegistrationSurveyCSVMixin
 
+from nti.app.assessment.interfaces import IUsersCourseInquiry
+
 from nti.app.base.abstract_views import AbstractAuthenticatedView
 
 from nti.common.maps import CaseInsensitiveDict
 
 from nti.common.property import Lazy
+
+from nti.contentfragments.interfaces import IPlainTextContentFragment
 
 from nti.contenttypes.courses.interfaces import ES_CREDIT
 
@@ -192,7 +196,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 
 		return self.type_stat_statvar_map
 
-	def _get_row_for_user( self, user, sources ):
+	def _get_row_for_user( self, user, course, sources ):
 		"""
 		Gather the data dict for the user from the given sources.
 		"""
@@ -221,8 +225,8 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 					user_results[header_label] = stat_value
 		return user_results
 
-	def _write_stats_for_user( self, writer, user, sources ):
-		user_results = self._get_row_for_user( user, sources )
+	def _write_stats_for_user( self, writer, user, course, sources ):
+		user_results = self._get_row_for_user( user, course, sources )
 		writer.writerow( user_results )
 
 	def _set_course_day_delta(self, params):
@@ -310,7 +314,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 						headers = self._get_headers( sources )
 						writer = csv.DictWriter( stream, headers )
 						writer.writeheader()
-					self._write_stats_for_user( writer, user, sources )
+					self._write_stats_for_user( writer, user, course, sources )
 
 		stream.flush()
 		stream.seek(0)
@@ -338,29 +342,105 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats,
 
 	"""
 
-	def _get_survey_question_key(self, question):
-		pass
+	@Lazy
+	def survey_id(self):
+		params = CaseInsensitiveDict( self.request.params )
+		survey_id = params.get( 'PostSurveyNTIID' ) or params.get( 'surveyId' )
+		if not survey_id:
+			raise hexc.HTTPUnprocessibleEntity( 'Must supply survey_id.' )
+		return survey_id
 
-	def _get_survey_headers(self):
-		return ()
+	@Lazy
+	def survey(self):
+		survey = find_object_with_ntiid( self.survey_id )
+		if survey is None:
+			raise hexc.HTTPUnprocessibleEntity( 'Survey not found for %s', self.survey_id )
+		return survey
+
+	@Lazy
+	def survey_title(self):
+		return self.survey.title
+
+	def _get_survey_question_part_key(self, question, part=None, index=None):
+		content = IPlainTextContentFragment( question.content )
+		result = '[%s] %s' % ( self.survey_title, content )
+		if part is not None:
+			if part.content:
+				part_content = IPlainTextContentFragment( part.content )
+			else:
+				part_content = str( index )
+			result = '%s - %s' % (result, part_content)
+		if result and isinstance( result, unicode ):
+			result = result.encode( 'utf-8' )
+		return result
+
+	def _add_survey_headers(self, header_list):
+		"""
+		Traverse the survey, building and storing reproducible keys (headers).
+		"""
+		for question in self.survey.questions or ():
+			if len( question.parts or () ) > 1:
+				for idx, part in enumerate( question.parts ):
+					question_key = self._get_survey_question_part_key( question,
+																	   part,
+																	   idx )
+					header_list.append( question_key )
+			else:
+				question_key = self._get_survey_question_part_key( question )
+				header_list.append( question_key )
+		return header_list
 
 	def _get_headers(self, *args, **kwargs):
-		headers = super( LearningNetworkSurveyCSVStats, self )._get_headers( *args, **kwargs )
-		survey_headers = self._get_survey_headers()
-		# TODO: Check for collisions
-		headers.extend( survey_headers )
+		headers = super( LearningNetworkSurveyCSVStats, self )._get_headers( *args,
+																			 **kwargs )
+		headers = self._add_survey_headers( headers )
 		return headers
 
-	def _get_survey_responses(self, user):
-		# Need to map our header (title) to the response
-		return {}
+	def _get_survey_submission(self, user, course):
+		course_inquiry = component.getMultiAdapter((course, user),
+												   IUsersCourseInquiry)
+		result = None
+		try:
+			result = course_inquiry[self.survey.ntiid]
+		except KeyError:
+			pass
+		return result
 
-	def _get_row_for_user( self, user, *args, **kwargs ):
+	def _get_survey_responses(self, user, course):
+		"""
+		For the user and course, pull the user's survey submission
+		(if available), return responses matched to the appropriate
+		survey-question-part key.
+		"""
+		submission = self._get_survey_submission( user, course )
+		result = {}
+		if submission is not None:
+			# Now store our user's response for each question part.
+			# Must make sure we map to keys stored in the writer.
+			for question, sub_question in zip( self.survey.questions,
+											   submission.Submission.parts):
+				assert question.ntiid == sub_question.inquiryId
+				if len( question.parts or () ) > 1:
+					assert len( question.parts ) == len( sub_question.parts )
+					for idx, part in enumerate( question.parts ):
+						question_key = self._get_survey_question_part_key( question,
+																	   	   part,
+																	   	   idx )
+						result[question_key] = sub_question.parts[idx]
+				else:
+					question_key = self._get_survey_question_part_key( question )
+					result[question_key] = sub_question.parts[0]
+		return result
+
+	def _get_row_for_user( self, user, course, *args, **kwargs ):
 		"""
 		Gather the data dict for the user from the given sources.
 		"""
-		user_results = super( LearningNetworkSurveyCSVStats, self )._get_row_for_user( user, *args, **kwargs )
-		survey_results = self._get_survey_responses( user )
+		user_results = super( LearningNetworkSurveyCSVStats, self )._get_row_for_user( user,
+																					   course,
+																					   *args,
+																					   **kwargs )
+		survey_results = self._get_survey_responses( user, course )
 		user_results.update( survey_results )
 		return user_results
 
