@@ -86,16 +86,18 @@ def _get_stat_source(iface, user, course, timestamp=None, max_timestamp=None):
 def _get_subscribers( user, course ):
 	return component.subscribers( (user, course), IAnalyticsStatsSource )
 
-def _get_stats_for_user( user, course, timestamp=None, max_timestamp=None ):
+def _get_stats_for_user( user, course, timestamp=None,
+						 max_timestamp=None, exclude_outcome=False ):
 	access_source = _get_stat_source(IAccessStatsSource, user, course, timestamp, max_timestamp)
 	prod_source = _get_stat_source(IProductionStatsSource, user, course, timestamp, max_timestamp)
 	social_source = _get_stat_source(IInteractionStatsSource, user, course, timestamp, max_timestamp)
-	outcome_source = _get_stat_source(IOutcomeStatsSource, user, course)
 	stats = _get_subscribers(user, course)
 	stats.append( access_source )
 	stats.append( prod_source )
 	stats.append( social_source )
-	stats.append( outcome_source )
+	if not exclude_outcome:
+		outcome_source = _get_stat_source(IOutcomeStatsSource, user, course)
+		stats.append( outcome_source )
 	return stats
 
 def _add_stats_to_user_dict(user_dict, user, course, timestamp):
@@ -111,6 +113,7 @@ class _AbstractCSVView(AbstractAuthenticatedView):
 		self.user_info = bool( params.get( 'UserInfo', False ) )
 		self.opaque_id = bool( params.get( 'OpaqueUserId', True ))
 		self.instructors = bool( params.get( 'Instructors', False ))
+		self.exclude_outcome_stats = bool( params.get( 'ExcludeOutcomeStats', False ))
 		self._set_times( params )
 		self._set_course_day_delta( params )
 
@@ -153,6 +156,8 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 
 		CourseStartTime - part of the course filter that only pulls courses that start *before*
 			this date.
+
+		ExcludeOutcomeStats - exclude outcome stats (defaults to False)
 
 	"""
 
@@ -305,7 +310,9 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 				if 		user is not None \
 					and not username.endswith( '@nextthought.com' ):
 
-					sources = _get_stats_for_user( user, course, start_time, end_time )
+					sources = _get_stats_for_user( user, course, start_time,
+												   end_time,
+												   self.exclude_outcome_stats )
 					if writer is None:
 						# We defer writing headers until we get our stat sources.
 						headers = self._get_headers( sources )
@@ -342,14 +349,15 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 		params = CaseInsensitiveDict( self.request.params )
 		survey_id = params.get( 'PostSurveyNTIID' ) or params.get( 'surveyId' )
 		if not survey_id:
-			raise hexc.HTTPUnprocessibleEntity( 'Must supply survey_id.' )
+			raise hexc.HTTPUnprocessableEntity( 'Must supply survey_id.' )
 		return survey_id
 
 	@Lazy
 	def survey(self):
 		survey = find_object_with_ntiid( self.survey_id )
 		if survey is None:
-			raise hexc.HTTPUnprocessibleEntity( 'Survey not found for %s', self.survey_id )
+			raise hexc.HTTPUnprocessableEntity(
+						'Survey not found for %s' % self.survey_id )
 		return survey
 
 	@Lazy
