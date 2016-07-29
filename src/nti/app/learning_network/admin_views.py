@@ -31,9 +31,6 @@ from nti.analytics.resource_tags import get_note_views
 from nti.analytics.stats.interfaces import IStats
 from nti.analytics.stats.interfaces import IAnalyticsStatsSource
 
-from nti.app.analytics_registration.view_mixins import RegistrationIDViewMixin
-from nti.app.analytics_registration.view_mixins import RegistrationSurveyCSVMixin
-
 from nti.app.assessment.interfaces import IUsersCourseInquiry
 
 from nti.app.base.abstract_views import AbstractAuthenticatedView
@@ -327,9 +324,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			 context=IDataserverFolder,
 			 permission=nauth.ACT_NTI_ADMIN,
 			 name=SURVEY_STATS_VIEW_NAME)
-class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats,
-									RegistrationSurveyCSVMixin,
-									RegistrationIDViewMixin):
+class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 	"""
 	For the given course, fetch any registered analytic stats sources,
 	supplemented by the post-survey data specified by the param.

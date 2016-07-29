@@ -38,8 +38,7 @@ setup(
 		'collective.monkeypatcher',
 		'setuptools',
 		 # 'pygraphviz' if not IS_PYPY else '',
-		'nti.learning_network',
-		'nti.app.analytics_registration'
+		'nti.learning_network'
 	],
 	entry_points=entry_points
 )
