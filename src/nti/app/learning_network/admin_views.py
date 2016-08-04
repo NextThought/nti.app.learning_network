@@ -37,6 +37,8 @@ from nti.app.base.abstract_views import AbstractAuthenticatedView
 
 from nti.common.maps import CaseInsensitiveDict
 
+from nti.common.string import is_true
+
 from nti.common.property import Lazy
 
 from nti.contentfragments.interfaces import IPlainTextContentFragment
@@ -325,48 +327,14 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		response.body_file = stream
 		return response
 
-@view_config(route_name='objects.generic.traversal',
-			 renderer='rest',
-			 request_method='GET',
-			 context=IDataserverFolder,
-			 permission=nauth.ACT_NTI_ADMIN,
-			 name=SURVEY_STATS_VIEW_NAME)
-class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
+class DefaultSurveyHeaderProvider(object):
 	"""
-	For the given course, fetch any registered analytic stats sources,
-	supplemented by the post-survey data specified by the param.
-
-	params:
-
-		*params from super class*
-
-		PostSurveyNTIID - fetch the survey question/responses for each user.
-
-		SurveyMultipleChoiceAnswerByColumn - report multiple choice responses
-			in the final survey as a choice per column, with a binary (0/1)
-			whether the user chose that response or not.
-
+	Provides question column headers.
 	"""
 
-	def __init__(self, request):
-		super( LearningNetworkSurveyCSVStats, self ).__init__( request )
-		params = CaseInsensitiveDict( request.params )
-
-		self.survey_id = params.get( 'PostSurveyNTIID' ) or params.get( 'surveyId' )
-		if not self.survey_id:
-			raise hexc.HTTPUnprocessableEntity( 'Must supply survey_id.' )
-
-	@Lazy
-	def survey(self):
-		survey = find_object_with_ntiid( self.survey_id )
-		if survey is None:
-			raise hexc.HTTPUnprocessableEntity(
-						'Survey not found for %s' % self.survey_id )
-		return survey
-
-	@Lazy
-	def survey_title(self):
-		return self.survey.title
+	def __init__(self, survey, survey_title):
+		self.survey = survey
+		self.survey_title = survey_title
 
 	def _get_survey_question_part_key(self, question, part=None, index=None):
 		content = IPlainTextContentFragment( question.content )
@@ -381,45 +349,28 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 			result = result.encode( 'utf-8' )
 		return result
 
-	def _add_survey_headers(self, header_list):
+	def get_survey_headers(self):
 		"""
 		Traverse the survey, building and storing reproducible keys (headers).
 		"""
+		result = []
 		for question in self.survey.questions or ():
 			if len( question.parts or () ) > 1:
 				for idx, part in enumerate( question.parts ):
 					question_key = self._get_survey_question_part_key( question,
 																	   part,
 																	   idx )
-					header_list.append( question_key )
+					result.append( question_key )
 			else:
 				question_key = self._get_survey_question_part_key( question )
-				header_list.append( question_key )
-		return header_list
-
-	def _get_headers(self, *args, **kwargs):
-		headers = super( LearningNetworkSurveyCSVStats, self )._get_headers( *args,
-																			 **kwargs )
-		headers = self._add_survey_headers( headers )
-		return headers
-
-	def _get_survey_submission(self, user, course):
-		course_inquiry = component.getMultiAdapter((course, user),
-												   IUsersCourseInquiry)
-		result = None
-		try:
-			result = course_inquiry[self.survey.ntiid]
-		except KeyError:
-			pass
+				result.append( question_key )
 		return result
 
-	def _get_survey_responses(self, user, course):
+	def get_results_for_submission(self, submission):
 		"""
-		For the user and course, pull the user's survey submission
-		(if available), return responses matched to the appropriate
-		survey-question-part key.
+		For the submission, return a dict of headers to responses matched to
+		the appropriate survey-question-part key defined as the column header.
 		"""
-		submission = self._get_survey_submission( user, course )
 		result = {}
 		if submission is not None:
 			# Now store our user's response for each question part.
@@ -439,6 +390,73 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 					result[question_key] = sub_question.parts[0]
 		return result
 
+class ByAnswerSurveyHeaderProvider( DefaultSurveyHeaderProvider ):
+	pass
+
+@view_config(route_name='objects.generic.traversal',
+			 renderer='rest',
+			 request_method='GET',
+			 context=IDataserverFolder,
+			 permission=nauth.ACT_NTI_ADMIN,
+			 name=SURVEY_STATS_VIEW_NAME)
+class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
+	"""
+	For the given course, fetch any registered analytic stats sources,
+	supplemented by the post-survey data specified by the param.
+
+	params:
+
+		*params from super class*
+
+		PostSurveyNTIID - fetch the survey question/responses for each user.
+
+		SurveyMultipleChoiceAnswerByColumn - report multiple choice responses
+			in the final survey as a choice per column, with a binary (0/1)
+			whether the user chose that response or not (default False).
+
+	"""
+
+	def __init__(self, request):
+		super( LearningNetworkSurveyCSVStats, self ).__init__( request )
+		params = CaseInsensitiveDict( request.params )
+
+		self.survey_id = params.get( 'PostSurveyNTIID' ) or params.get( 'surveyId' )
+		if not self.survey_id:
+			raise hexc.HTTPUnprocessableEntity( 'Must supply survey_id.' )
+		answer_by_column = params.get( 'SurveyMultipleChoiceAnswerByColumn', False )
+		answer_by_column = is_true( answer_by_column )
+		factory = ByAnswerSurveyHeaderProvider if answer_by_column else DefaultSurveyHeaderProvider
+		self.header_provider = factory( self.survey, self.survey_title )
+
+	@Lazy
+	def survey(self):
+		survey = find_object_with_ntiid( self.survey_id )
+		if survey is None:
+			raise hexc.HTTPUnprocessableEntity(
+						'Survey not found for %s' % self.survey_id )
+		return survey
+
+	@Lazy
+	def survey_title(self):
+		return self.survey.title
+
+	def _get_headers(self, *args, **kwargs):
+		headers = super( LearningNetworkSurveyCSVStats, self )._get_headers( *args,
+																			 **kwargs )
+		survey_headers = self.header_provider.get_survey_headers()
+		headers.extend( survey_headers )
+		return headers
+
+	def _get_survey_submission(self, user, course):
+		course_inquiry = component.getMultiAdapter((course, user),
+												   IUsersCourseInquiry)
+		result = None
+		try:
+			result = course_inquiry[self.survey.ntiid]
+		except KeyError:
+			pass
+		return result
+
 	def _get_row_for_user( self, user, course, *args, **kwargs ):
 		"""
 		Gather the data dict for the user from the given sources.
@@ -447,7 +465,8 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 																					   course,
 																					   *args,
 																					   **kwargs )
-		survey_results = self._get_survey_responses( user, course )
+		submission = self._get_survey_submission( user, course )
+		survey_results = self.header_provider.get_results_for_submission( submission )
 		user_results.update( survey_results )
 		return user_results
 
