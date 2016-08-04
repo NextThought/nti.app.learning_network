@@ -107,8 +107,9 @@ def _add_stats_to_user_dict(user_dict, user, course, timestamp):
 
 class _AbstractCSVView(AbstractAuthenticatedView):
 
-	def _initialize(self):
-		params = CaseInsensitiveDict(self.request.params)
+	def __init__(self, request):
+		super( _AbstractCSVView, self ).__init__( request )
+		params = CaseInsensitiveDict(request.params)
 		self.course_filter = params.get( 'filter', '' )
 		self.user_info = bool( params.get( 'UserInfo', False ) )
 		self.opaque_id = bool( params.get( 'OpaqueUserId', True ))
@@ -273,7 +274,6 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		return header_labels
 
 	def __call__(self):
-		self._initialize()
 		course = self.context
 		response = self.request.response
 		response.content_encoding = str( 'identity' )
@@ -342,15 +342,19 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 
 		PostSurveyNTIID - fetch the survey question/responses for each user.
 
+		SurveyMultipleChoiceAnswerByColumn - report multiple choice responses
+			in the final survey as a choice per column, with a binary (0/1)
+			whether the user chose that response or not.
+
 	"""
 
-	@Lazy
-	def survey_id(self):
-		params = CaseInsensitiveDict( self.request.params )
-		survey_id = params.get( 'PostSurveyNTIID' ) or params.get( 'surveyId' )
-		if not survey_id:
+	def __init__(self, request):
+		super( LearningNetworkSurveyCSVStats, self ).__init__( request )
+		params = CaseInsensitiveDict( request.params )
+
+		self.survey_id = params.get( 'PostSurveyNTIID' ) or params.get( 'surveyId' )
+		if not self.survey_id:
 			raise hexc.HTTPUnprocessableEntity( 'Must supply survey_id.' )
-		return survey_id
 
 	@Lazy
 	def survey(self):
