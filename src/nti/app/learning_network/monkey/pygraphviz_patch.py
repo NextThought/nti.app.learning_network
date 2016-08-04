@@ -32,9 +32,9 @@ easy to accomplish, but if you stop there you get a hang. This is because it use
 to read from the pipes; the threads are cooperative, but the pipes aren't, so the event loop hangs.
 """
 
-def patch( scope, original, replacement ):
+def patch(scope, original, replacement):
 
-	if not hasattr( gevent, 'monkey' ):
+	if not hasattr(gevent, 'monkey'):
 		# Probably only in unit tests.
 		return
 
@@ -53,7 +53,8 @@ def patch( scope, original, replacement ):
 	import pygraphviz.agraph
 	pygraphviz.agraph.subprocess = fake_subprocess
 
-	pygraphviz.agraph.PipeReader.__bases__ = (gevent.monkey.get_original('threading', 'Thread'),)
+	gmonkey = gevent.monkey
+	pygraphviz.agraph.PipeReader.__bases__ = (gmonkey.get_original('threading', 'Thread'),)
 
 	start = pygraphviz.agraph.PipeReader.start
 	def _start(self):
@@ -61,7 +62,7 @@ def patch( scope, original, replacement ):
 	_start.__code__ = start.__code__
 	for k, v in start.func_globals.items():
 		_start.func_globals[k] = v
-	_start.func_globals['_start_new_thread'] = gevent.monkey.get_original('threading', '_start_new_thread')
+	_start.func_globals['_start_new_thread'] = gmonkey.get_original('threading', '_start_new_thread')
 	pygraphviz.agraph.PipeReader.start = _start
 
 	import threading
@@ -73,7 +74,7 @@ def patch( scope, original, replacement ):
 			pass
 
 	_Condition.wait.im_func.__code__ = threading._Condition.wait.im_func.__code__
-	_Condition.wait.im_func.func_globals['_allocate_lock'] = gevent.monkey.get_original('threading', '_allocate_lock')
+	_Condition.wait.im_func.func_globals['_allocate_lock'] = gmonkey.get_original('threading', '_allocate_lock')
 
 	def Event():
 		evt = threading.Event()
@@ -90,5 +91,5 @@ def patch( scope, original, replacement ):
 	# Since we're using real threads, we should use real locks
 	# (instead of gevent locks) to avoid intermittent 'block forever'
 	# issues.
-	if isinstance( threading._active_limbo_lock, gevent.lock.Semaphore ):
+	if isinstance(threading._active_limbo_lock, gevent.lock.Semaphore):
 		threading._active_limbo_lock = gevent.monkey.get_original('threading', '_allocate_lock')()
