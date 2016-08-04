@@ -230,6 +230,8 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 				for stat_var in stat_vars:
 					stat_value = getattr( stat, stat_var ) if stat is not None else ''
 					header_label = self._get_stat_str( source_type, stat_name, stat_var )
+					# Google sheets users a ' to signify we do not want auto-conversion by type.
+					stat_value = "'%s" % stat_value
 					user_results[header_label] = stat_value
 		return user_results
 
@@ -349,6 +351,7 @@ class DefaultSurveyHeaderProvider(object):
 		part_content = None
 		if part.content:
 			part_content = IPlainTextContentFragment( part.content )
+			part_content = part_content.strip()
 		elif part_length > 1:
 			part_content = str( index )
 		if part_content:
@@ -443,6 +446,7 @@ class ByAnswerSurveyHeaderProvider( DefaultSurveyHeaderProvider ):
 			question_part_key = question_part_keys[0]
 			for choice in part.choices or ():
 				choice = IPlainTextContentFragment( choice )
+				choice = choice.strip()
 				if choice and isinstance( choice, unicode ):
 					choice = choice.encode( 'utf-8' )
 				choice = str('%s [%s]') % ( question_part_key, choice )
