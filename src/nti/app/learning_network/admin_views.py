@@ -35,6 +35,9 @@ from nti.app.assessment.interfaces import IUsersCourseInquiry
 
 from nti.app.base.abstract_views import AbstractAuthenticatedView
 
+from nti.assessment.interfaces import IQModeledContentResponse
+from nti.assessment.interfaces import IQNonGradableMultipleChoicePart
+
 from nti.common.maps import CaseInsensitiveDict
 
 from nti.common.string import is_true
@@ -336,17 +339,33 @@ class DefaultSurveyHeaderProvider(object):
 		self.survey = survey
 		self.survey_title = survey_title
 
-	def _get_survey_question_part_key(self, question, part=None, index=None):
+	def _get_survey_question_part_key(self, question, part, index, part_length):
+		"""
+		Build our header name: '[survey] question [part] [supplemental]'.
+		"""
 		content = IPlainTextContentFragment( question.content )
 		result = '[%s] %s' % ( self.survey_title, content )
-		if part is not None:
-			if part.content:
-				part_content = IPlainTextContentFragment( part.content )
-			else:
-				part_content = str( index )
-			result = '%s - %s' % (result, part_content)
+		# Display part content or part index (if more than one part).
+		part_content = None
+		if part.content:
+			part_content = IPlainTextContentFragment( part.content )
+		elif part_length > 1:
+			part_content = str( index )
+		if part_content:
+			result = '%s [%s]' % (result, part_content)
 		if result and isinstance( result, unicode ):
 			result = result.encode( 'utf-8' )
+		return (result,)
+
+	def _get_headers_for_question(self, question):
+		result = []
+		part_length = len( question.parts or () )
+		for idx, part in enumerate( question.parts or () ):
+			question_keys = self._get_survey_question_part_key( question,
+															    part,
+															    idx,
+															    part_length )
+			result.extend( question_keys )
 		return result
 
 	def get_survey_headers(self):
@@ -355,15 +374,31 @@ class DefaultSurveyHeaderProvider(object):
 		"""
 		result = []
 		for question in self.survey.questions or ():
-			if len( question.parts or () ) > 1:
-				for idx, part in enumerate( question.parts ):
-					question_key = self._get_survey_question_part_key( question,
-																	   part,
-																	   idx )
-					result.append( question_key )
-			else:
-				question_key = self._get_survey_question_part_key( question )
-				result.append( question_key )
+			headers = self._get_headers_for_question( question )
+			result.extend( headers )
+		return result
+
+	def _get_part_submission_results(self, question_keys, part, response ):
+		result = {}
+		if IQModeledContentResponse.providedBy( response ):
+			responses = response.value
+		else:
+			responses = (response,)
+		# Append all of our result values in plain text.
+		response_values = []
+		for response_part in responses:
+			try:
+				response_part = IPlainTextContentFragment( response_part )
+				response_part = response_part.strip()
+			except TypeError:
+				response_part = ''
+			if response_part:
+				response_values.append( response_part )
+		response_display = ' - '.join( response_values ) if response_values else ''
+		# Should only have one key for this part
+		assert len( question_keys ) == 1
+		question_key = question_keys[0]
+		result[question_key] = response_display
 		return result
 
 	def get_results_for_submission(self, submission):
@@ -378,20 +413,60 @@ class DefaultSurveyHeaderProvider(object):
 			for question, sub_question in zip( self.survey.questions,
 											   submission.Submission.parts):
 				assert question.ntiid == sub_question.inquiryId
-				if len( question.parts or () ) > 1:
-					assert len( question.parts ) == len( sub_question.parts )
-					for idx, part in enumerate( question.parts ):
-						question_key = self._get_survey_question_part_key( question,
-																	   	   part,
-																	   	   idx )
-						result[question_key] = sub_question.parts[idx]
-				else:
-					question_key = self._get_survey_question_part_key( question )
-					result[question_key] = sub_question.parts[0]
+				part_length = len( question.parts or () )
+				for idx, part in enumerate( question.parts or () ):
+					question_keys = self._get_survey_question_part_key( question,
+																	    part,
+																	    idx,
+																	    part_length )
+					response = sub_question.parts[idx]
+					student_results = self._get_part_submission_results( question_keys,
+																		 part,
+																		 response )
+					result.update( student_results )
 		return result
 
 class ByAnswerSurveyHeaderProvider( DefaultSurveyHeaderProvider ):
-	pass
+	"""
+	Provides csv column headers for each multiple choice option, with a
+	binary (0/1) if the choice was chosen by the user.
+	"""
+
+	def _get_survey_question_part_key(self, question, part, *args):
+		"""
+		Build our header name: '[survey] question [part] [choice]'.
+		"""
+		question_part_keys = super( ByAnswerSurveyHeaderProvider, self )._get_survey_question_part_key( question,
+																										part, *args )
+		results = []
+		if IQNonGradableMultipleChoicePart.providedBy( part ):
+			question_part_key = question_part_keys[0]
+			for choice in part.choices or ():
+				choice = IPlainTextContentFragment( choice )
+				if choice and isinstance( choice, unicode ):
+					choice = choice.encode( 'utf-8' )
+				choice = str('%s [%s]') % ( question_part_key, choice )
+				results.append( choice )
+		else:
+			results = question_part_keys
+		return results
+
+	def _get_part_submission_results(self, question_keys, part, response ):
+		"""
+		Get a binary result for each multiple choice response.
+		"""
+		if IQNonGradableMultipleChoicePart.providedBy( part ):
+			assert len( question_keys ) == len( part.choices or () )
+			result = {}
+			if isinstance( response, int ):
+				response = (response,)
+			for idx, question_key in enumerate( question_keys ):
+				result[question_key] = '1' if response and idx in response else '0'
+		else:
+			result = super( ByAnswerSurveyHeaderProvider, self )._get_part_submission_results( question_keys,
+																							   part,
+																							   response )
+		return result
 
 @view_config(route_name='objects.generic.traversal',
 			 renderer='rest',
