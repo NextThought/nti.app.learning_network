@@ -272,12 +272,15 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		type_stat_statvar_map = self._get_type_stat_statvar_map( sources )
 
 		for source in sources:
+			source_headers = []
 			source_type = self._get_source_str( source )
 			stat_map = type_stat_statvar_map.get( source_type  )
 			for stat_name, stat_vars in stat_map.items():
 				for stat_var in stat_vars:
 					header_label = self._get_stat_str( source_type, stat_name, stat_var )
-					header_labels.append( header_label )
+					source_headers.append( header_label )
+			source_headers = sorted( source_headers )
+			header_labels.extend( source_headers )
 		return header_labels
 
 	def __call__(self):
