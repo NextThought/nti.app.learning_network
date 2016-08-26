@@ -21,6 +21,8 @@ from zope import component
 from pyramid.view import view_config
 from pyramid import httpexceptions as hexc
 
+from nti.app.learning_network.connections import get_connection_graphs
+
 from nti.analytics.users import get_user_record
 
 from nti.analytics.boards import get_topic_views
@@ -41,8 +43,6 @@ from nti.assessment.interfaces import IQNonGradableMultipleChoicePart
 from nti.common.maps import CaseInsensitiveDict
 
 from nti.common.string import is_true
-
-from nti.common.property import Lazy
 
 from nti.contentfragments.interfaces import IPlainTextContentFragment
 
@@ -71,7 +71,7 @@ from nti.learning_network.interfaces import IInteractionStatsSource
 
 from nti.ntiids.ntiids import find_object_with_ntiid
 
-from nti.app.learning_network.connections import get_connection_graphs
+from nti.property.property import Lazy
 
 STATS_VIEW_NAME = "LearningNetworkStats"
 CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"

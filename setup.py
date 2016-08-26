@@ -35,9 +35,8 @@ setup(
 	package_dir={'': 'src'},
 	namespace_packages=['nti', 'nti.app'],
 	install_requires=[
-		'collective.monkeypatcher',
 		'setuptools',
-		 # 'pygraphviz' if not IS_PYPY else '',
+		'collective.monkeypatcher',
 		'nti.learning_network'
 	],
 	entry_points=entry_points
