@@ -61,3 +61,11 @@ class LearningNetworkApplicationTestLayer(ApplicationTestLayer):
     @classmethod
     def tearDown(cls):
         pass
+
+    @classmethod
+    def testSetUp(cls, test=None):
+        pass
+
+    @classmethod
+    def testTearDown(cls):
+        pass

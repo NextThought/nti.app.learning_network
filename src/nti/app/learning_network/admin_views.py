@@ -173,7 +173,8 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		return getattr( source, 'display_name', '' )
 
 	def _get_stat_str(self, source_type, stat_name, stat_var ):
-		return '%s_%s_%s' % ( source_type, stat_name, stat_var )
+		result = '%s_%s_%s' % ( source_type, stat_name, stat_var )
+		return result
 
 	def _get_type_stat_statvar_map( self, sources ):
 		"""
@@ -237,6 +238,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 
 	def _write_stats_for_user( self, writer, user, course, sources ):
 		user_results = self._get_row_for_user( user, course, sources )
+		__traceback_info__ = user_results
 		writer.writerow( user_results )
 
 	def _set_course_day_delta(self, params):
@@ -384,7 +386,7 @@ class DefaultSurveyHeaderProvider(object):
 			result.extend( headers )
 		return result
 
-	def _get_part_submission_results(self, question_keys, part, response ):
+	def _get_part_submission_results(self, question_keys, unused_part, response ):
 		result = {}
 		if IQModeledContentResponse.providedBy( response ):
 			responses = response.value
@@ -401,6 +403,8 @@ class DefaultSurveyHeaderProvider(object):
 			if response_part:
 				response_values.append( response_part )
 		response_display = ' - '.join( response_values ) if response_values else ''
+		if response_display and isinstance( response_display, unicode ):
+			response_display = response_display.encode( 'utf-8' )
 		# Should only have one key for this part
 		assert len( question_keys ) == 1
 		question_key = question_keys[0]
@@ -490,7 +494,8 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 
 		*params from super class*
 
-		PostSurveyNTIID - fetch the survey question/responses for each user.
+		PostSurveyNTIID - [list] for each survey, fetch the survey
+			question/responses for each user.
 
 		SurveyMultipleChoiceAnswerByColumn - report multiple choice responses
 			in the final survey as a choice per column, with a binary (0/1)
@@ -502,39 +507,42 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 		super( LearningNetworkSurveyCSVStats, self ).__init__( request )
 		params = CaseInsensitiveDict( request.params )
 
-		self.survey_id = params.get( 'PostSurveyNTIID' ) or params.get( 'surveyId' )
-		if not self.survey_id:
+		self.survey_ids =  self.request.params.getall( 'PostSurveyNTIID' ) \
+						or self.request.params.getall( 'surveyId' )
+		if not self.survey_ids:
 			raise hexc.HTTPUnprocessableEntity( 'Must supply survey_id.' )
 		answer_by_column = params.get( 'SurveyMultipleChoiceAnswerByColumn', False )
 		answer_by_column = is_true( answer_by_column )
 		factory = ByAnswerSurveyHeaderProvider if answer_by_column else DefaultSurveyHeaderProvider
-		self.header_provider = factory( self.survey, self.survey_title )
+		self.header_providers = dict()
+		for survey in self.surveys:
+			self.header_providers[survey.ntiid] = factory( survey, survey.title )
 
 	@Lazy
-	def survey(self):
-		survey = find_object_with_ntiid( self.survey_id )
-		if survey is None:
-			raise hexc.HTTPUnprocessableEntity(
-						'Survey not found for %s' % self.survey_id )
-		return survey
-
-	@Lazy
-	def survey_title(self):
-		return self.survey.title
+	def surveys(self):
+		results = []
+		for survey_id in self.survey_ids:
+			survey = find_object_with_ntiid( survey_id )
+			if survey is None:
+				raise hexc.HTTPUnprocessableEntity(
+							'Survey not found for %s' % survey_id )
+			results.append( survey )
+		return results
 
 	def _get_headers(self, *args, **kwargs):
 		headers = super( LearningNetworkSurveyCSVStats, self )._get_headers( *args,
 																			 **kwargs )
-		survey_headers = self.header_provider.get_survey_headers()
-		headers.extend( survey_headers )
+		for provider in self.header_providers.values():
+			survey_headers = provider.get_survey_headers()
+			headers.extend( survey_headers )
 		return headers
 
-	def _get_survey_submission(self, user, course):
+	def _get_survey_submission(self, survey, user, course):
 		course_inquiry = component.getMultiAdapter((course, user),
 												   IUsersCourseInquiry)
 		result = None
 		try:
-			result = course_inquiry[self.survey.ntiid]
+			result = course_inquiry[survey.ntiid]
 		except KeyError:
 			pass
 		return result
@@ -547,9 +555,11 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 																					   course,
 																					   *args,
 																					   **kwargs )
-		submission = self._get_survey_submission( user, course )
-		survey_results = self.header_provider.get_results_for_submission( submission )
-		user_results.update( survey_results )
+		for survey in self.surveys:
+			submission = self._get_survey_submission( survey, user, course )
+			provider = self.header_providers[survey.ntiid]
+			survey_results = provider.get_results_for_submission( submission )
+			user_results.update( survey_results )
 		return user_results
 
 @view_config(route_name='objects.generic.traversal',
