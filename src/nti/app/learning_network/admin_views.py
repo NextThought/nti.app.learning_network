@@ -13,6 +13,8 @@ import csv
 
 from io import BytesIO
 
+from collections import OrderedDict
+
 from datetime import datetime
 from datetime import timedelta
 
@@ -202,10 +204,9 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 								source_stats.append( stat_var )
 
 			self.type_stat_statvar_map = type_stat_statvar_map
-
 		return self.type_stat_statvar_map
 
-	def _get_row_for_user( self, user, course, sources ):
+	def _get_row_for_user( self, user, unused_course, sources ):
 		"""
 		Gather the data dict for the user from the given sources.
 		"""
@@ -514,7 +515,8 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 		answer_by_column = params.get( 'SurveyMultipleChoiceAnswerByColumn', False )
 		answer_by_column = is_true( answer_by_column )
 		factory = ByAnswerSurveyHeaderProvider if answer_by_column else DefaultSurveyHeaderProvider
-		self.header_providers = dict()
+		# Useful to keep a consistent order.
+		self.header_providers = OrderedDict()
 		for survey in self.surveys:
 			self.header_providers[survey.ntiid] = factory( survey, survey.title )
 
@@ -527,6 +529,7 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 				raise hexc.HTTPUnprocessableEntity(
 							'Survey not found for %s' % survey_id )
 			results.append( survey )
+		results = sorted( results, key=lambda x: x.ntiid )
 		return results
 
 	def _get_headers(self, *args, **kwargs):
