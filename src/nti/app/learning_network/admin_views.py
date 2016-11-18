@@ -224,9 +224,11 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			return
 		# First user info
 		if self.user_info:
+			email = getattr( IUserProfile( user, None ), 'email', '' )
 			user_results.update( {'user_id': user_record.user_id,
 								  'username': user.username,
-								  'username2': user_record.username2} )
+								  'username2': user_record.username2,
+								  'email': email } )
 		elif self.opaque_id:
 			user_results['user_id'] = user_record.user_id
 		account_create_date = getattr( user, 'created', None )
@@ -275,7 +277,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 	def _get_headers(self, sources):
 		"""
 		Write our headers:
-			* user
+			* user data
 			* additional headers
 			* stats
 		"""
@@ -284,7 +286,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		if self.user_info:
 			header_labels.extend( ( 'user_id', 'enrollment_date',
 									'last_login_time', 'account_create_date',
-									'username', 'username2') )
+									'username', 'username2', 'email' ) )
 		elif self.opaque_id:
 			header_labels.extend( ( 'user_id', 'enrollment_date',
 									'last_login_time', 'account_create_date') )
