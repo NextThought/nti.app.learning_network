@@ -14,6 +14,7 @@ import six
 
 from io import BytesIO
 
+from collections import namedtuple
 from collections import OrderedDict
 
 from datetime import datetime
@@ -54,6 +55,7 @@ from nti.contenttypes.courses.interfaces import ES_CREDIT
 from nti.contenttypes.courses.interfaces import ICourseCatalog
 from nti.contenttypes.courses.interfaces import ICourseInstance
 from nti.contenttypes.courses.interfaces import ICourseEnrollments
+from nti.contenttypes.courses.interfaces import ICourseCatalogEntry
 
 from nti.dataserver import authorization as nauth
 
@@ -153,7 +155,7 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 
 		filter - str course filter on catalog entry ntiid
 
-		UserInfo - whether to includer username and other user info in results
+		UserInfo - whether to include username and other user info in results
 			(defaults to False)
 
 		OpaqueUserId = whether to include an opaque user id in the results
@@ -213,12 +215,16 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			self.type_stat_statvar_map = type_stat_statvar_map
 		return self.type_stat_statvar_map
 
-	def _get_row_for_user( self, user, record, unused_course, sources ):
+	def _get_row_for_user( self, user, record, course, sources ):
 		"""
 		Gather the data dict for the user from the given sources.
 		"""
 		type_stat_statvar_map = self._get_type_stat_statvar_map( sources )
 		user_results = {}
+
+		entry = ICourseCatalogEntry( course )
+		user_results['course_title'] = entry.title
+		user_results['course_ntiid'] = entry.ntiid
 		user_record = get_user_record( user )
 		if user_record is None:
 			return
@@ -281,12 +287,11 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			* additional headers
 			* stats
 		"""
-		# Now build our headers (match iteration with stat iteration)
-		header_labels = []
+		header_labels = ['course_title', 'course_ntiid']
 		if self.user_info:
-			header_labels.extend( ( 'user_id', 'enrollment_date',
-									'last_login_time', 'account_create_date',
-									'username', 'username2', 'email' ) )
+			header_labels.extend( ( 'username', 'username2', 'email',
+									'user_id', 'enrollment_date',
+									'last_login_time', 'account_create_date' ) )
 		elif self.opaque_id:
 			header_labels.extend( ( 'user_id', 'enrollment_date',
 									'last_login_time', 'account_create_date') )
@@ -374,6 +379,8 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 		response.body_file = stream
 		return response
 
+_QuestionPartKeys = namedtuple( "QuestionPartKeys", ("original_part_key", "part_keys"))
+
 class DefaultSurveyHeaderProvider(object):
 	"""
 	Provides question column headers.
@@ -383,7 +390,7 @@ class DefaultSurveyHeaderProvider(object):
 		self.survey = survey
 		self.survey_title = survey_title
 
-	def _get_survey_question_part_key(self, question, part, index, part_length):
+	def _get_survey_question_part_keys(self, question, part, index, part_length):
 		"""
 		Build our header name: '[survey] question [part] [supplemental]'.
 		"""
@@ -400,17 +407,20 @@ class DefaultSurveyHeaderProvider(object):
 			result = '%s [%s]' % (result, part_content)
 		if result and isinstance( result, unicode ):
 			result = result.encode( 'utf-8' )
-		return (result,)
+		result = _QuestionPartKeys( result, None )
+		return result
 
 	def _get_headers_for_question(self, question):
 		result = []
 		part_length = len( question.parts or () )
 		for idx, part in enumerate( question.parts or () ):
-			question_keys = self._get_survey_question_part_key( question,
-															    part,
-															    idx,
-															    part_length )
-			result.extend( question_keys )
+			question_keys = self._get_survey_question_part_keys( question,
+															     part,
+															     idx,
+															     part_length )
+			if question_keys.part_keys:
+				result.extend( question_keys.part_keys )
+			result.append( question_keys.original_part_key )
 		return result
 
 	def get_survey_headers(self):
@@ -442,10 +452,7 @@ class DefaultSurveyHeaderProvider(object):
 		response_display = ' - '.join( response_values ) if response_values else ''
 		if response_display and isinstance( response_display, unicode ):
 			response_display = response_display.encode( 'utf-8' )
-		# Should only have one key for this part
-		assert len( question_keys ) == 1
-		question_key = question_keys[0]
-		result[question_key] = response_display
+		result[question_keys.original_part_key] = response_display
 		return result
 
 	def get_results_for_submission(self, submission):
@@ -462,10 +469,10 @@ class DefaultSurveyHeaderProvider(object):
 				assert question.ntiid == sub_question.inquiryId
 				part_length = len( question.parts or () )
 				for idx, part in enumerate( question.parts or () ):
-					question_keys = self._get_survey_question_part_key( question,
-																	    part,
-																	    idx,
-																	    part_length )
+					question_keys = self._get_survey_question_part_keys( question,
+																	     part,
+																	     idx,
+																	     part_length )
 					response = sub_question.parts[idx]
 					student_results = self._get_part_submission_results( question_keys,
 																		 part,
@@ -476,39 +483,50 @@ class DefaultSurveyHeaderProvider(object):
 class ByAnswerSurveyHeaderProvider( DefaultSurveyHeaderProvider ):
 	"""
 	Provides csv column headers for each multiple choice option, with a
-	binary (0/1) if the choice was chosen by the user.
+	binary (0/1) if the choice was chosen by the user. We also include
+	the raw answer with the user response in a summary column.
 	"""
 
-	def _get_survey_question_part_key(self, question, part, *args):
+	def _get_choice_str(self, choice):
+		choice = IPlainTextContentFragment( choice )
+		choice = choice.strip()
+		if choice and isinstance( choice, unicode ):
+			choice = choice.encode( 'utf-8' )
+		return choice
+
+	def _get_survey_question_part_keys(self, question, part, *args):
 		"""
 		Build our header name: '[survey] question [part] [choice]'.
 		"""
-		question_part_keys = super( ByAnswerSurveyHeaderProvider, self )._get_survey_question_part_key( question,
-																										part, *args )
-		results = []
+		question_part_keys = super( ByAnswerSurveyHeaderProvider, self )._get_survey_question_part_keys( question,
+																										 part, *args )
+		result = question_part_keys
 		if IQNonGradableMultipleChoicePart.providedBy( part ):
-			question_part_key = question_part_keys[0]
+			# Order matters here since we tag by index
+			question_part_key = question_part_keys.original_part_key
+			part_keys = []
 			for choice in part.choices or ():
-				choice = IPlainTextContentFragment( choice )
-				choice = choice.strip()
-				if choice and isinstance( choice, unicode ):
-					choice = choice.encode( 'utf-8' )
+				choice = self._get_choice_str( choice )
 				choice = str('%s [%s]') % ( question_part_key, choice )
-				results.append( choice )
-		else:
-			results = question_part_keys
-		return results
+				part_keys.append( choice )
+			result = _QuestionPartKeys( question_part_key, part_keys )
+		return result
 
 	def _get_part_submission_results(self, question_keys, part, response ):
 		"""
 		Get a binary result for each multiple choice response.
 		"""
 		if IQNonGradableMultipleChoicePart.providedBy( part ):
-			assert len( question_keys ) == len( part.choices or () )
+			assert len( question_keys.part_keys or () ) == len( part.choices or () )
 			result = {}
 			if isinstance( response, int ):
 				response = (response,)
-			for idx, question_key in enumerate( question_keys ):
+			aggregate_response = []
+			for response_idx in response or ():
+				choice_response = self._get_choice_str( part.choices[response_idx] )
+				aggregate_response.append( choice_response )
+			result[question_keys.original_part_key] = str(', ').join( aggregate_response )
+			for idx, question_key in enumerate( question_keys.part_keys or () ):
 				result[question_key] = '1' if response and idx in response else '0'
 		else:
 			result = super( ByAnswerSurveyHeaderProvider, self )._get_part_submission_results( question_keys,
