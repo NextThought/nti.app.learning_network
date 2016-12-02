@@ -76,6 +76,7 @@ from nti.learning_network.interfaces import IOutcomeStatsSource
 from nti.learning_network.interfaces import IProductionStatsSource
 from nti.learning_network.interfaces import IInteractionStatsSource
 
+from nti.mailer.interfaces import IEmailAddressable
 
 from nti.ntiids.ntiids import find_object_with_ntiid
 
@@ -230,20 +231,20 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 			return
 		# First user info
 		if self.user_info:
-			email = getattr( IUserProfile( user, None ), 'email', '' )
-			user_results.update( {'user_id': user_record.user_id,
-								  'username': user.username,
+			addr = IEmailAddressable(user, None)
+			email = addr and addr.email
+			user_results.update( {'username': user.username,
 								  'username2': user_record.username2,
 								  'email': email } )
-		elif self.opaque_id:
+			account_create_date = getattr( user, 'created', None )
+			last_login = getattr( user, 'lastLoginTime', None )
+			if last_login:
+				last_login = datetime.utcfromtimestamp( last_login )
+			user_results['last_login_time'] = last_login
+			user_results['account_create_date'] = account_create_date
+			user_results['enrollment_date'] = record.created if record else None
+		if self.opaque_id:
 			user_results['user_id'] = user_record.user_id
-		account_create_date = getattr( user, 'created', None )
-		last_login = getattr( user, 'lastLoginTime', None )
-		if last_login:
-			last_login = datetime.utcfromtimestamp( last_login )
-		user_results['last_login_time'] = last_login
-		user_results['account_create_date'] = account_create_date
-		user_results['enrollment_date'] = record.created if record else None
 
 		# Then stat data
 		for source in sources:
@@ -283,18 +284,18 @@ class LearningNetworkCSVStats(_AbstractCSVView):
 	def _get_headers(self, sources):
 		"""
 		Write our headers:
+			* course data
 			* user data
 			* additional headers
 			* stats
 		"""
 		header_labels = ['course_title', 'course_ntiid']
+		if self.opaque_id:
+			header_labels.append( 'user_id' )
 		if self.user_info:
 			header_labels.extend( ( 'username', 'username2', 'email',
-									'user_id', 'enrollment_date',
-									'last_login_time', 'account_create_date' ) )
-		elif self.opaque_id:
-			header_labels.extend( ( 'user_id', 'enrollment_date',
-									'last_login_time', 'account_create_date') )
+									'enrollment_date', 'last_login_time',
+									'account_create_date' ) )
 
 		type_stat_statvar_map = self._get_type_stat_statvar_map( sources )
 
