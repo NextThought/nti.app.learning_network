@@ -584,7 +584,6 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
 				raise hexc.HTTPUnprocessableEntity(
 							'Survey not found for %s' % survey_id )
 			results.append( survey )
-		results = sorted( results, key=lambda x: x.ntiid )
 		return results
 
 	def _get_headers(self, *args, **kwargs):
