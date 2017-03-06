@@ -12,6 +12,8 @@ logger = __import__('logging').getLogger(__name__)
 import csv
 import six
 
+from requests.structures import CaseInsensitiveDict
+
 from io import BytesIO
 
 from collections import namedtuple
@@ -43,8 +45,6 @@ from nti.app.base.abstract_views import AbstractAuthenticatedView
 
 from nti.assessment.interfaces import IQModeledContentResponse
 from nti.assessment.interfaces import IQNonGradableMultipleChoicePart
-
-from nti.common.maps import CaseInsensitiveDict
 
 from nti.common.string import is_true
 
