@@ -13,7 +13,7 @@
 
 	<!-- Filters -->
 	<subscriber	factory=".filters._LearningNetworkContentObjectFilter"
-				provides="nti.appserver.interfaces.ICreatableObjectFilter"
+				provides="nti.dataserver.interfaces.ICreatableObjectFilter"
 				for="nti.dataserver.interfaces.IUser" />
 				
 	<configure zcml:condition="installed pygraphviz">
