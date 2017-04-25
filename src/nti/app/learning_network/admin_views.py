@@ -24,6 +24,8 @@ from datetime import timedelta
 
 from zope import component
 
+from zope.cachedescriptors.property import Lazy
+
 from pyramid.view import view_config
 from pyramid import httpexceptions as hexc
 
@@ -79,8 +81,6 @@ from nti.learning_network.interfaces import IInteractionStatsSource
 from nti.mailer.interfaces import IEmailAddressable
 
 from nti.ntiids.ntiids import find_object_with_ntiid
-
-from nti.property.property import Lazy
 
 STATS_VIEW_NAME = "LearningNetworkStats"
 CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"
