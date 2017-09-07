@@ -4,7 +4,7 @@
 .. $Id$
 """
 
-from __future__ import print_function, unicode_literals, absolute_import, division
+from __future__ import print_function, absolute_import, division
 __docformat__ = "restructuredtext en"
 
 logger = __import__('logging').getLogger(__name__)
@@ -32,64 +32,70 @@ easy to accomplish, but if you stop there you get a hang. This is because it use
 to read from the pipes; the threads are cooperative, but the pipes aren't, so the event loop hangs.
 """
 
-def patch(scope, original, replacement):
 
-	if not hasattr(gevent, 'monkey'):
-		# Probably only in unit tests.
-		return
+def patch(*unused_args, **unused_kwargs):
 
-	class FakeSubprocess(object):
-		pass
+    if not hasattr(gevent, 'monkey'):
+        # Probably only in unit tests.
+        return
 
-	import subprocess
-	fake_subprocess = FakeSubprocess()
+    class FakeSubprocess(object):
+        pass
 
-	for k, v in subprocess.__dict__.items():
-		setattr(fake_subprocess, k, v)
+    import subprocess
+    fake_subprocess = FakeSubprocess()
 
-	for k, v in gevent.monkey.saved['subprocess'].items():
-		setattr(fake_subprocess, k, v)
+    for k, v in subprocess.__dict__.items():
+        setattr(fake_subprocess, k, v)
 
-	import pygraphviz.agraph
-	pygraphviz.agraph.subprocess = fake_subprocess
+    saved_subprocess = gevent.monkey.saved.get('subprocess')
+    if saved_subprocess:
+        for k, v in saved_subprocess.items():
+            setattr(fake_subprocess, k, v)
 
-	gmonkey = gevent.monkey
-	pygraphviz.agraph.PipeReader.__bases__ = (gmonkey.get_original('threading', 'Thread'),)
+    import pygraphviz.agraph
+    pygraphviz.agraph.subprocess = fake_subprocess
 
-	start = pygraphviz.agraph.PipeReader.start
-	def _start(self):
-		pass
-	_start.__code__ = start.__code__
-	for k, v in start.func_globals.items():
-		_start.func_globals[k] = v
-	_start.func_globals['_start_new_thread'] = gmonkey.get_original('threading', '_start_new_thread')
-	pygraphviz.agraph.PipeReader.start = _start
+    gmonkey = gevent.monkey
+    pygraphviz.agraph.PipeReader.__bases__ = (gmonkey.get_original('threading', 'Thread'),)
 
-	import threading
+    start = pygraphviz.agraph.PipeReader.start
 
-	Lock = gevent.monkey.get_original('threading', 'Lock')
+    def _start(self):
+        pass
+    _start.__code__ = start.__code__
+    for k, v in start.func_globals.items():
+        _start.func_globals[k] = v
+    _start.func_globals['_start_new_thread'] = gmonkey.get_original('threading', '_start_new_thread')
+    pygraphviz.agraph.PipeReader.start = _start
 
-	class _Condition(threading._Condition):
-		def wait(self, timeout=None):
-			pass
+    import threading
 
-	_Condition.wait.im_func.__code__ = threading._Condition.wait.im_func.__code__
-	_Condition.wait.im_func.func_globals['_allocate_lock'] = gmonkey.get_original('threading', '_allocate_lock')
+    Lock = gevent.monkey.get_original('threading', 'Lock')
 
-	def Event():
-		evt = threading.Event()
-		evt._Event__cond = _Condition(Lock())
-		return evt
+    class _Condition(threading._Condition):
+        def wait(self, timeout=None):
+            pass
 
-	init = pygraphviz.agraph.PipeReader.__init__
-	def __init__(self, *args, **kwargs):
-		init(self, *args, **kwargs)
-		self._Thread__started = Event()
-		self._Thread__block = _Condition(Lock())
-	pygraphviz.agraph.PipeReader.__init__ = __init__
+    im_func = getattr(threading._Condition.wait, 'im_func')
+    _Condition.wait.im_func.__code__ = im_func.__code__
+    _Condition.wait.im_func.func_globals['_allocate_lock'] = gmonkey.get_original('threading', '_allocate_lock')
 
-	# Since we're using real threads, we should use real locks
-	# (instead of gevent locks) to avoid intermittent 'block forever'
-	# issues.
-	if isinstance(threading._active_limbo_lock, gevent.lock.Semaphore):
-		threading._active_limbo_lock = gevent.monkey.get_original('threading', '_allocate_lock')()
+    def Event():
+        evt = threading.Event()
+        evt._Event__cond = _Condition(Lock())
+        return evt
+
+    init = pygraphviz.agraph.PipeReader.__init__
+
+    def __init__(self, *args, **kwargs):
+        init(self, *args, **kwargs)
+        self._Thread__started = Event()
+        self._Thread__block = _Condition(Lock())
+    pygraphviz.agraph.PipeReader.__init__ = __init__
+
+    # Since we're using real threads, we should use real locks
+    # (instead of gevent locks) to avoid intermittent 'block forever'
+    # issues.
+    if isinstance(threading._active_limbo_lock, gevent.lock.Semaphore):
+        threading._active_limbo_lock = gevent.monkey.get_original('threading', '_allocate_lock')()
