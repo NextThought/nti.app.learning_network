@@ -7,8 +7,6 @@
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
-
-# pylint: disable=file-ignored
  
 import csv
 import six
@@ -27,6 +25,8 @@ from requests.structures import CaseInsensitiveDict
 from zope import component
 
 from zope.cachedescriptors.property import Lazy
+
+from nti.app.externalization.error import raise_json_error
 
 from nti.app.learning_network.connections import get_connection_graphs
 
@@ -71,6 +71,7 @@ from nti.dataserver.users.interfaces import IUserProfile
 from nti.dataserver.users.users import User
 
 from nti.externalization.interfaces import LocatedExternalDict
+from nti.externalization.interfaces import StandardExternalFields
 
 from nti.learning_network.interfaces import IAccessStatsSource
 from nti.learning_network.interfaces import IOutcomeStatsSource
@@ -80,6 +81,8 @@ from nti.learning_network.interfaces import IInteractionStatsSource
 from nti.mailer.interfaces import IEmailAddressable
 
 from nti.ntiids.ntiids import find_object_with_ntiid
+
+ITEM_COUNT = StandardExternalFields.ITEM_COUNT
 
 STATS_VIEW_NAME = "LearningNetworkStats"
 CONNECTIONS_VIEW_NAME = "LearningNetworkConnections"
@@ -435,10 +438,8 @@ class DefaultSurveyHeaderProvider(object):
         result = []
         part_length = len(question.parts or ())
         for idx, part in enumerate(question.parts or ()):
-            question_keys = self._get_survey_question_part_keys(question,
-                                                                part,
-                                                                idx,
-                                                                part_length)
+            question_keys = self._get_survey_question_part_keys(question, part,
+                                                                idx, part_length)
             if question_keys.part_keys:
                 result.extend(question_keys.part_keys)
             result.append(question_keys.original_part_key)
@@ -470,8 +471,7 @@ class DefaultSurveyHeaderProvider(object):
                 response_part = ''
             if response_part:
                 response_values.append(response_part)
-        response_display = ' - '.join(
-            response_values) if response_values else ''
+        response_display = ' - '.join(response_values) if response_values else ''
         if response_display and isinstance(response_display, six.text_type):
             response_display = response_display.encode('utf-8')
         result[question_keys.original_part_key] = response_display
@@ -590,7 +590,12 @@ class LearningNetworkSurveyCSVStats(LearningNetworkCSVStats):
         self.survey_ids = self.request.params.getall('PostSurveyNTIID') \
                        or self.request.params.getall('surveyId')
         if not self.survey_ids:
-            raise hexc.HTTPUnprocessableEntity('Must supply survey_id.')
+            raise_json_error(self.request,
+                             hexc.HTTPUnprocessableEntity,
+                             {
+                                 'message': u"Must supply survey_id.",
+                             },
+                             None)
         answer_by_column = params.get('SurveyMultipleChoiceAnswerByColumn', False)
         answer_by_column = is_true(answer_by_column)
         factory = ByAnswerSurveyHeaderProvider if answer_by_column else DefaultSurveyHeaderProvider
@@ -670,7 +675,12 @@ class LearningNetworkCourseStats(AbstractAuthenticatedView):
         if username:
             user = User.get_user(username)
             if user is None:
-                return hexc.HTTPNotFound("No user found %s" % username)
+                raise_json_error(self.request,
+                                 hexc.HTTPUnprocessableEntity,
+                                 {
+                                     'message': u"No user found %s." % username,
+                                 },
+                                 None)
             usernames = (username,)
         else:
             # pylint: disable=too-many-function-args
@@ -684,7 +694,7 @@ class LearningNetworkCourseStats(AbstractAuthenticatedView):
                 _add_stats_to_user_dict(user_dict, user, course, timestamp)
             else:
                 logger.info('User (%s) in course not found.', username)
-        result['ItemCount'] = len(usernames)
+        result[ITEM_COUNT] = len(usernames)
         return result
 
 
@@ -858,7 +868,12 @@ class LearningNetworkUserStats(AbstractAuthenticatedView):
             course = find_object_with_ntiid(course_ntiid)
             course = ICourseInstance(course, None)
             if course is None:
-                return hexc.HTTPNotFound("No course found for %s" % course_ntiid)
+                raise_json_error(self.request,
+                                 hexc.HTTPUnprocessableEntity,
+                                 {
+                                     'message': u"No course found for %s" % course_ntiid,
+                                 },
+                                 None)
         result = LocatedExternalDict()
         _add_stats_to_user_dict(result, user, course, timestamp)
         return result
@@ -884,6 +899,11 @@ class CourseConnectionGraph(AbstractAuthenticatedView):
         try:
             get_connection_graphs(course, timestamp)
         except TypeError:
-            raise hexc.HTTPServerError("Cannot create connection graphs; pygraphviz missing?")
+            raise_json_error(self.request,
+                             hexc.HTTPServerError,
+                             {
+                                 'message': u"Cannot create connection graphs; pygraphviz missing?",
+                             },
+                             None)
         # What do we want to return, gif?. TODO:
         return hexc.HTTPNoContent()
