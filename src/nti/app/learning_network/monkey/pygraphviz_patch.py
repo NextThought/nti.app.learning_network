@@ -4,10 +4,9 @@
 .. $Id$
 """
 
-from __future__ import print_function, absolute_import, division
-__docformat__ = "restructuredtext en"
-
-logger = __import__('logging').getLogger(__name__)
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
 
 import gevent
 
@@ -31,6 +30,8 @@ the only solution I see is to let `pygraphviz` use the original blocking Popen. 
 easy to accomplish, but if you stop there you get a hang. This is because it uses threads
 to read from the pipes; the threads are cooperative, but the pipes aren't, so the event loop hangs.
 """
+
+logger = __import__('logging').getLogger(__name__)
 
 
 def patch(*unused_args, **unused_kwargs):
@@ -61,7 +62,7 @@ def patch(*unused_args, **unused_kwargs):
 
     start = pygraphviz.agraph.PipeReader.start
 
-    def _start(self):
+    def _start(unused_self):
         pass
     _start.__code__ = start.__code__
     for k, v in start.func_globals.items():
@@ -73,6 +74,7 @@ def patch(*unused_args, **unused_kwargs):
 
     Lock = gevent.monkey.get_original('threading', 'Lock')
 
+    # pylint: disable=protected-access
     class _Condition(threading._Condition):
         def wait(self, timeout=None):
             pass
