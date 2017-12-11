@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function, unicode_literals, absolute_import, division
-__docformat__ = "restructuredtext en"
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
 
-# disable: accessing protected members, too many methods
-# pylint: disable=W0212,R0904
+# pylint: disable=protected-access,too-many-public-methods,arguments-differ
+
+import zope.testing.cleanup
 
 from zope import component
 
@@ -21,7 +23,6 @@ from nti.testing.layers import ConfiguringLayerMixin
 
 from nti.dataserver.tests.mock_dataserver import DSInjectorMixin
 
-import zope.testing.cleanup
 
 class SharedConfiguringTestLayer(ZopeComponentLayer,
                                  GCLayerMixin,
@@ -47,10 +48,13 @@ class SharedConfiguringTestLayer(ZopeComponentLayer,
     def testTearDown(cls):
         pass
 
+
 import unittest
+
 
 class LearningNetworkTestCase(unittest.TestCase):
     layer = SharedConfiguringTestLayer
+
 
 class LearningNetworkApplicationTestLayer(ApplicationTestLayer):
 
