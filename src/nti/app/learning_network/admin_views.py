@@ -683,9 +683,8 @@ class LearningNetworkCourseStats(AbstractAuthenticatedView):
                                  None)
             usernames = (username,)
         else:
-            # pylint: disable=too-many-function-args
             enrollments = ICourseEnrollments(course)
-            usernames = tuple(enrollments.iter_principals())
+            usernames = enrollments.iter_principals()  # pylint: disable=too-many-function-args
 
         for username in usernames:
             result[username] = user_dict = {}
