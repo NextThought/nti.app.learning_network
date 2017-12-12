@@ -62,7 +62,6 @@ setup(
         'nti.externalization',
         'nti.learning_network',
         'nti.ntiids',
-        'pygraphviz' if not IS_PYPY else '',
         'pyramid',
         'requests',
         'zope.cachedescriptors',
