@@ -10,6 +10,7 @@
 build/
 dist/
 /.tox/
+src/nti.app.learning_network.egg-info
 
 .coverage
 htmlcov/
