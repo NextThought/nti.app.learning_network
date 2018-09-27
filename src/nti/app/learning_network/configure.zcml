@@ -23,7 +23,7 @@
 		<!-- Doing late patching of pygraphviz, we only need the handler param. -->
 		<monkey:patch	
 			module="pygraphviz"
-			original=""
+			original="monkey"
 			ignoreOriginal="True"
 			replacement=".monkey.pygraphviz_patch"
 			handler=".monkey.pygraphviz_patch.patch" />
